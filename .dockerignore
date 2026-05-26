@@ -41,7 +41,7 @@ blob-report
 !README.md
 
 # Documentation runtime payload
-# Keep English markdown + OpenAPI for `/docs`; omit heavy generated mirrors/screenshots.
+# Keep English markdown + OpenAPI for `/docs`; omit heavy generated mirrors.
 docs/*
 !docs/*.md
 !docs/architecture/
@@ -68,6 +68,7 @@ docs/i18n/
 docs/i18n/**
 docs/screenshots/
 docs/screenshots/**
+!docs/screenshots/*.png
 !docs/diagrams/exported/
 !docs/diagrams/exported/*.svg
 
