@@ -72,8 +72,8 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     aliases: ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"],
   },
 
-  // ── Gemini 3.1 Pro High ─────────────────────────────────────────
-  "gemini-3.1-pro-high": {
+  // ── Gemini 3.1 Pro ───────────────────────────────────────────────
+  "gemini-3.1-pro": {
     maxOutputTokens: 65535,
     contextWindow: 1048576,
     defaultThinkingBudget: 24576,
@@ -83,6 +83,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsTools: true,
     supportsVision: true,
     aliases: [
+      "gemini-3.1-pro-high",
       "gemini-3-pro-high",
       "gemini-3-pro-preview",
       "gemini-3.1-pro-preview",
@@ -90,7 +91,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     ],
   },
 
-  // ── Gemini 3.1 Pro Low ──────────────────────────────────────────
+  // ── Gemini 3.1 Pro Low (deprecated, kept for back-compat) ────────
   "gemini-3.1-pro-low": {
     maxOutputTokens: 65535,
     contextWindow: 1048576,
@@ -100,6 +101,16 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     supportsTools: true,
     supportsVision: true,
     aliases: ["gemini-3-pro-low"],
+  },
+
+  // ── Gemini 3.5 Flash ─────────────────────────────────────────────
+  "gemini-3.5-flash": {
+    maxOutputTokens: 65536,
+    contextWindow: 1048576,
+    supportsThinking: false,
+    supportsTools: true,
+    supportsVision: true,
+    aliases: ["gemini-3.5-flash-high"],
   },
 
   // ── Claude Opus 4.5 ─────────────────────────────────────────────

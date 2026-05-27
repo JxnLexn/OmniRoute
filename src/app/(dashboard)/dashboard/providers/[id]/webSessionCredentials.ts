@@ -87,6 +87,12 @@ export const WEB_SESSION_CREDENTIAL_REQUIREMENTS = {
     placeholder: "__client=... or full Cookie header from agent.adapta.one",
     acceptsFullCookieHeader: true,
   },
+  "inner-ai": {
+    kind: "cookie",
+    credentialName: "token + email",
+    placeholder: "token_value user@example.com",
+    acceptsFullCookieHeader: false,
+  },
 } satisfies Record<keyof typeof WEB_COOKIE_PROVIDERS, WebSessionCredentialRequirement>;
 
 export function getWebSessionCredentialRequirement(

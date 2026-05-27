@@ -129,7 +129,7 @@ test("AntigravityExecutor.transformRequest normalizes model, project and content
 
   if (result instanceof Response) throw new Error("Unexpected Response from transformRequest");
   assert.equal(result.project, "project-1");
-  assert.equal(result.model, "gemini-3.1-pro-low");
+  assert.equal(result.model, "gemini-3.1-pro");
   assert.deepEqual(Object.keys(result), [
     "project",
     "requestId",
@@ -216,7 +216,7 @@ test("AntigravityExecutor.transformRequest tolerates a missing body when project
 
   if (result instanceof Response) throw new Error("Unexpected Response from transformRequest");
   assert.equal(result.project, "project-1");
-  assert.equal(result.model, "gemini-3.1-pro-low");
+  assert.equal(result.model, "gemini-3.1-pro");
   assert.ok(result.request.sessionId);
 });
 

@@ -544,6 +544,34 @@ function parseResetTime(value) {
   return null;
 }
 
+function toPlainHeaders(headers: unknown): Record<string, string> {
+  if (!headers) return {};
+  const plain: Record<string, string> = {};
+  const obj = headers as Record<string, unknown>;
+  if (typeof obj.forEach === "function") {
+    try {
+      (obj.forEach as (cb: (v: string, k: string) => void) => void)((v: string, k: string) => {
+        plain[k.toLowerCase()] = v;
+      });
+      return plain;
+    } catch {}
+  }
+  if (typeof obj.entries === "function") {
+    try {
+      for (const [k, v] of (obj.entries as () => Iterable<[string, string]>)()) {
+        plain[k.toLowerCase()] = v;
+      }
+      return plain;
+    } catch {}
+  }
+  try {
+    for (const [k, v] of Object.entries(obj)) {
+      plain[k.toLowerCase()] = v == null ? "" : String(v);
+    }
+  } catch {}
+  return plain;
+}
+
 /**
  * Update rate limiter based on API response headers.
  * Called after every successful or failed response from a provider.
@@ -558,14 +586,14 @@ export function updateFromHeaders(provider, connectionId, headers, status, model
   if (!enabledConnections.has(connectionId)) return;
   if (!headers) return;
 
+  const plainHeaders = toPlainHeaders(headers);
   const limiter = getLimiter(provider, connectionId, model);
   const headerMap =
     provider === "claude" || provider === "anthropic" ? ANTHROPIC_HEADERS : STANDARD_HEADERS;
 
   // Get header values (handle both Headers object and plain object)
-  const getHeader = (name) => {
-    if (typeof headers.get === "function") return headers.get(name);
-    return headers[name] || null;
+  const getHeader = (name: string) => {
+    return plainHeaders[name.toLowerCase()] || null;
   };
 
   const limit = parseInt(getHeader(headerMap.limit));

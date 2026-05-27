@@ -47,6 +47,7 @@ import { parseModel } from "./model.ts";
 import { applyComboAgentMiddleware, injectModelTag } from "./comboAgentMiddleware.ts";
 import { checkCredentialGate, logCredentialSkip } from "./credentialGate.ts";
 import { emit } from "../../src/lib/events/eventBus";
+import { notifyWebhookEvent } from "../../src/lib/webhookDispatcher";
 import {
   classifyWithConfig,
   DEFAULT_INTENT_CONFIG,
@@ -105,6 +106,7 @@ function isAllAccountsRateLimitedResponse(
 const MAX_COMBO_DEPTH = 3;
 const MAX_FALLBACK_WAIT_MS = 5000;
 const MAX_GLOBAL_ATTEMPTS = 30;
+const COMBO_MODEL_TIMEOUT_MS = 30_000; // 30s per model attempt within a combo (default FETCH_TIMEOUT_MS=600s)
 
 function resolveDelayMs(value: unknown, fallback: number): number {
   const numericValue = Number(value);
@@ -184,10 +186,14 @@ type ComboLogger = {
   debug: (...args: unknown[]) => void;
 };
 
+export type SingleModelTarget =
+  | (ResolvedComboTarget & { modelAbortSignal?: AbortSignal | null })
+  | { modelAbortSignal: AbortSignal };
+
 type HandleSingleModel = (
   body: Record<string, unknown>,
   modelStr: string,
-  target?: ResolvedComboTarget
+  target?: SingleModelTarget
 ) => Promise<Response>;
 
 type IsModelAvailable = (
@@ -2438,7 +2444,7 @@ export async function handleComboChat({
   const clientRequestedStream = body?.stream === true;
   // Wrap handleSingleModel to inject context caching tag on response (#401)
   const handleSingleModelWrapped = combo.context_cache_protection
-    ? async (b: Record<string, unknown>, modelStr: string, target?: ResolvedComboTarget) => {
+    ? async (b: Record<string, unknown>, modelStr: string, target?: SingleModelTarget) => {
         const res = await handleSingleModel(b, modelStr, target);
         if (!res.ok) return res;
 
@@ -2547,8 +2553,26 @@ export async function handleComboChat({
         });
 
         const transformedStream = res.body.pipeThrough(transform);
-        // Add model info as response header for clients that support it
-        const headers = new Headers(res.headers);
+        const headers = new Headers();
+        if (res.headers) {
+          try {
+            res.headers.forEach((v, k) => {
+              headers.set(k, v);
+            });
+          } catch {
+            try {
+              for (const [k, v] of res.headers as unknown as Iterable<[string, string]>) {
+                headers.set(k, v);
+              }
+            } catch {
+              try {
+                for (const [k, v] of Object.entries(res.headers)) {
+                  headers.set(k, v == null ? "" : String(v));
+                }
+              } catch {}
+            }
+          }
+        }
         headers.set("X-OmniRoute-Model", modelStr);
         return new Response(transformedStream, {
           status: res.status,
@@ -2558,13 +2582,71 @@ export async function handleComboChat({
     : handleSingleModel;
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ── Per-model timeout wrapper ────────────────────────────────────────────
+  // Default FETCH_TIMEOUT_MS is 600s per model. For combos, we use a shorter
+  // per-model timeout so slow/hanging models don't block fallback.
+  //
+  // The timeoutController is forwarded to the inner caller via target.modelAbortSignal.
+  // When the timeout fires we (a) resolve the race with a synthetic 524 and
+  // (b) abort the inner request so its upstream fetch is cancelled and downstream
+  // cooldown/breaker/usage mutations stop — preventing "ghost" state mutations
+  // that diverge from the routing decision the operator sees.
+  const handleSingleModelWithTimeout = async (
+    b: Record<string, unknown>,
+    modelStr: string,
+    target?: SingleModelTarget
+  ): Promise<Response> => {
+    const timeoutController = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    const timeoutPromise = new Promise<Response>((resolve) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        log.warn(
+          "COMBO",
+          `Model ${modelStr} exceeded ${COMBO_MODEL_TIMEOUT_MS}ms timeout — falling back`
+        );
+        // Abort the inner request so its upstream fetch is cancelled and
+        // downstream cooldown/breaker/usage mutations don't continue mutating
+        // state behind the routing decision's back.
+        timeoutController.abort(new Error("combo-per-model-timeout"));
+        resolve(
+          new Response(JSON.stringify({ error: { message: `Model ${modelStr} timed out` } }), {
+            status: 524,
+            headers: { "Content-Type": "application/json" },
+          })
+        );
+      }, COMBO_MODEL_TIMEOUT_MS);
+    });
+    const targetWithSignal = {
+      ...(target ?? {}),
+      modelAbortSignal: timeoutController.signal,
+    };
+    try {
+      return await Promise.race([
+        handleSingleModelWrapped(b, modelStr, targetWithSignal).catch((err) => {
+          if (timedOut) {
+            // Inner call rejected because we aborted it. The synthetic 524 from
+            // timeoutPromise already wins the race; return an empty response so
+            // the loser branch resolves cleanly without leaking err.message.
+            return new Response(null, { status: 599 });
+          }
+          return errorResponse(502, err?.message ?? "Upstream model error");
+        }),
+        timeoutPromise,
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
   // Route to pinned model if context caching specifies one (Fix #679)
   if (pinnedModel) {
     log.info(
       "COMBO",
       `Bypassing strategy — routing directly to pinned context model: ${pinnedModel}`
     );
-    return handleSingleModelWrapped(body, pinnedModel);
+    return handleSingleModelWithTimeout(body, pinnedModel);
   }
 
   // Route to round-robin handler if strategy matches
@@ -2572,7 +2654,7 @@ export async function handleComboChat({
     return handleRoundRobinCombo({
       body,
       combo,
-      handleSingleModel: handleSingleModelWrapped,
+      handleSingleModel: handleSingleModelWithTimeout,
       isModelAvailable,
       log,
       settings,
@@ -2616,7 +2698,7 @@ export async function handleComboChat({
         const pipelineRaw = await handlePipelineCombo({
           body,
           combo,
-          handleChatCore: handleSingleModel,
+          handleChatCore: handleSingleModelWithTimeout,
           log: {
             info: log.info,
             warn: log.warn,
@@ -3136,7 +3218,7 @@ export async function handleComboChat({
             );
           }
         }
-        const result = await handleSingleModelWrapped(attemptBody, modelStr, {
+        const result = await handleSingleModelWithTimeout(attemptBody, modelStr, {
           ...target,
           failoverBeforeRetry: config.failoverBeforeRetry,
         });
@@ -3162,7 +3244,6 @@ export async function handleComboChat({
             lastError = `Upstream response failed quality validation: ${quality.reason}`;
             if (!lastStatus) lastStatus = 502;
             if (i > 0) fallbackCount++;
-            break; // move to next model
             emit("combo.target.failed", {
               comboName: combo.name,
               targetIndex: i,
@@ -3171,6 +3252,7 @@ export async function handleComboChat({
               error: `Quality: ${quality.reason}`,
               latencyMs: Date.now() - startTime,
             });
+            break; // move to next model
           }
           const latencyMs = Date.now() - startTime;
           emit("combo.target.succeeded", {
@@ -3192,6 +3274,14 @@ export async function handleComboChat({
             target: toRecordedTarget(target),
           });
           recordedAttempts++;
+          // Webhook fan-out: best-effort, never blocks the response stream.
+          notifyWebhookEvent("request.completed", {
+            combo: combo.name,
+            provider,
+            model: modelStr,
+            latencyMs,
+            fallbackCount,
+          });
 
           // Universal handoff: record model usage for session
           if (
@@ -3200,7 +3290,6 @@ export async function handleComboChat({
             !(body as Record<string, unknown>)?.[SKIP_UNIVERSAL_HANDOFF_FLAG]
           ) {
             const prevModel = getLastSessionModel(relayOptions.sessionId, combo.name);
-
             recordSessionModelUsage(
               relayOptions.sessionId,
               combo.name,
@@ -3208,7 +3297,6 @@ export async function handleComboChat({
               provider,
               target.connectionId ?? undefined
             );
-
             if (prevModel && prevModel !== modelStr) {
               const handoffSourceMessages =
                 Array.isArray(body?.messages) && body.messages.length > 0
@@ -3224,9 +3312,17 @@ export async function handleComboChat({
                 prevModel,
                 currModel: modelStr,
                 universalConfig: universalHandoffConfig,
-                handleSingleModel: handleSingleModelWrapped,
+                handleSingleModel: handleSingleModelWithTimeout,
               });
             }
+
+            recordSessionModelUsage(
+              relayOptions.sessionId,
+              combo.name,
+              modelStr,
+              provider,
+              target.connectionId ?? undefined
+            );
           }
           // Context-relay intentionally splits responsibilities:
           // combo.ts decides whether a successful turn should generate a handoff,
@@ -3265,7 +3361,7 @@ export async function handleComboChat({
                   model: modelStr,
                   expiresAt: resetCandidates[0] || null,
                   config: relayConfig,
-                  handleSingleModel: handleSingleModelWrapped,
+                  handleSingleModel: handleSingleModelWithTimeout,
                 });
               }
             }
@@ -3397,13 +3493,17 @@ export async function handleComboChat({
         // Trigger shared provider circuit breaker for 5xx errors and connection failures.
         // If the next target in the combo is on the same provider, don't mark the provider
         // as failed — different models on the same provider may still succeed.
+        // G-02: when fallbackResult.skipProviderBreaker is set (embedded service supervisor
+        // outage signalled via X-Omni-Fallback-Hint: connection_cooldown) apply connection
+        // cooldown only — do NOT trip the whole-provider breaker.
         const nextTarget = orderedTargets[i + 1];
         const sameProviderNext =
           typeof nextTarget?.provider === "string" && nextTarget.provider === provider;
         if (
           !isStreamReadinessFailure &&
           isProviderFailureCode(result.status) &&
-          !sameProviderNext
+          !sameProviderNext &&
+          !fallbackResult.skipProviderBreaker
         ) {
           recordProviderFailure(provider, log, target.connectionId, profile);
         }
@@ -3467,6 +3567,12 @@ export async function handleComboChat({
 
     // All set retries exhausted — return the final error
     if (!lastStatus) {
+      notifyWebhookEvent("request.failed", {
+        combo: combo.name,
+        reason: "ALL_ACCOUNTS_INACTIVE",
+        latencyMs,
+        fallbackCount,
+      });
       return new Response(
         JSON.stringify({
           error: {

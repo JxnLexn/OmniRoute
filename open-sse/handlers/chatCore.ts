@@ -14,7 +14,11 @@ import { resolveStreamReadinessTimeout } from "../utils/streamReadinessPolicy.ts
 import { createStreamController, pipeWithDisconnect } from "../utils/streamHandler.ts";
 import { createSseHeartbeatTransform, shapeForClientFormat } from "../utils/sseHeartbeat.ts";
 import { addBufferToUsage, filterUsageForFormat, estimateUsage } from "../utils/usageTracking.ts";
-import { refreshWithRetry, isUnrecoverableRefreshError } from "../services/tokenRefresh.ts";
+import {
+  refreshWithRetry,
+  isUnrecoverableRefreshError,
+  runWithOnPersist,
+} from "../services/tokenRefresh.ts";
 import { createRequestLogger } from "../utils/requestLogger.ts";
 import { getModelTargetFormat, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.ts";
 import { DEFAULT_THINKING_CLAUDE_SIGNATURE } from "../config/defaultThinkingSignature.ts";
@@ -30,6 +34,7 @@ import {
   createErrorResult,
   parseUpstreamError,
   formatProviderError,
+  sanitizeErrorMessage,
 } from "../utils/error.ts";
 import {
   COOLDOWN_MS,
@@ -782,7 +787,7 @@ function createBodyTimeoutError(timeoutMs: number): Error {
 function readStreamChunkWithTimeout(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   timeoutMs: number
-): Promise<ReadableStreamReadResult<Uint8Array>> {
+): Promise<{ done: boolean; value?: Uint8Array }> {
   if (timeoutMs <= 0) return reader.read();
 
   return new Promise((resolve, reject) => {
@@ -1391,7 +1396,7 @@ function isCopilotClient(
   if (isMatch(userAgent)) return true;
 
   if (headers instanceof Headers) {
-    for (const [key, value] of headers) {
+    for (const [key, value] of headers as unknown as Iterable<[string, string]>) {
       if (isMatch(key) || isMatch(value)) return true;
     }
   } else if (headers && typeof headers === "object") {
@@ -2700,7 +2705,10 @@ export async function handleChatCore({
         }
         if (comboConfig) {
           const allCombosData = await getCombosCached();
-          const targets = resolveComboTargets(comboConfig, allCombosData);
+          const targets = resolveComboTargets(
+            comboConfig as unknown as { name: string; models: unknown[] },
+            allCombosData as unknown as { name: string; models: unknown[] }[]
+          );
           const limits = targets.map((t: { modelStr?: string }) => {
             const parsed = parseModel(t.modelStr);
             return getTokenLimit(parsed.provider, parsed.model);
@@ -3575,7 +3583,13 @@ export async function handleChatCore({
                 stage: "sending_to_provider",
               });
               const execCreds = getExecutionCredentials();
-              const res = await executeWithUpstreamStartTimeout({
+              const res = await executeWithUpstreamStartTimeout<{
+                response: Response;
+                url: string;
+                headers: Record<string, string>;
+                transformedBody: unknown;
+                _executionCredentials?: unknown;
+              }>({
                 executor,
                 provider,
                 model: modelToCall,
@@ -3768,7 +3782,28 @@ export async function handleChatCore({
         }
 
         const statusText = rawResult.response.statusText;
-        const headers = new Headers(rawResult.response.headers);
+        const rawHeaders = rawResult.response.headers;
+        const headersObj: Record<string, string> = {};
+        if (rawHeaders) {
+          if (typeof rawHeaders.forEach === "function") {
+            try {
+              rawHeaders.forEach((v: string, k: string) => {
+                headersObj[k] = v;
+              });
+            } catch {
+              try {
+                for (const [k, v] of rawHeaders as unknown as Iterable<[string, string]>) {
+                  headersObj[k] = v;
+                }
+              } catch {
+                Object.assign(headersObj, rawHeaders);
+              }
+            }
+          } else {
+            Object.assign(headersObj, rawHeaders);
+          }
+        }
+        const headers = new Headers(headersObj);
         stripStaleForwardingHeaders(headers);
         const contentType = (headers.get("content-type") || "").toLowerCase();
         const payload = await readNonStreamingResponseBody(
@@ -4017,8 +4052,30 @@ export async function handleChatCore({
       isQwenExpiredError) &&
     !hadStreamOptions // Skip refresh if failure may be from stream_options removal, not auth
   ) {
+    // Fix A: wrap refreshCredentials in runWithOnPersist so the persist callback
+    // executes INSIDE the per-connection mutex held by getAccessToken. This makes
+    // [network refresh + DB write + outer-state mutation] one atomic step and
+    // prevents concurrent requests from reading a stale refreshToken before the
+    // DB has been updated (refresh_token_reused on Codex/OpenAI).
+    //
+    // Not every executor routes refresh through getAccessToken (e.g. github.ts
+    // calls refreshCopilotToken directly). When the persistFn doesn't fire from
+    // inside getAccessToken, we still need to do the credentials mutation + user
+    // callback after refreshCredentials returns. The `persistFnRan` flag tracks
+    // which path executed so we don't double-fire (race-prone) or skip (regression).
+    let persistFnRan = false;
+    const persistFn = onCredentialsRefreshed
+      ? async (refreshResult: any) => {
+          persistFnRan = true;
+          // Mutate the shared credentials object so subsequent executor calls
+          // in this request see the new tokens. Runs INSIDE the mutex.
+          Object.assign(credentials, refreshResult);
+          await onCredentialsRefreshed(refreshResult);
+        }
+      : undefined;
+
     const newCredentials = (await refreshWithRetry(
-      () => executor.refreshCredentials(credentials, log),
+      () => runWithOnPersist(persistFn, () => executor.refreshCredentials(credentials, log)),
       3,
       log,
       provider // Explicitly pass the provider to avoid universally tripping the "unknown" circuit breaker
@@ -4030,12 +4087,15 @@ export async function handleChatCore({
     if (newCredentials?.accessToken || newCredentials?.copilotToken) {
       log?.info?.("TOKEN", `${provider.toUpperCase()} | refreshed`);
 
-      // Update credentials
-      Object.assign(credentials, newCredentials);
-
-      // Notify caller about refreshed credentials
-      if (onCredentialsRefreshed && newCredentials) {
-        await onCredentialsRefreshed(newCredentials);
+      // Fall back to post-mutex mutation only for executors that don't route
+      // through getAccessToken (and therefore never fire onPersist). For
+      // executors that DO route through it (Codex, Claude, Gemini, etc.) the
+      // mutation already happened atomically inside the mutex.
+      if (!persistFnRan) {
+        Object.assign(credentials, newCredentials);
+        if (onCredentialsRefreshed) {
+          await onCredentialsRefreshed(newCredentials);
+        }
       }
 
       // Retry with new credentials — model + extra headers follow translatedBody.model so they
@@ -4072,8 +4132,15 @@ export async function handleChatCore({
           providerResponse = retryResult.response;
           upstreamErrorParsed = false; // Let it be parsed downstream
         }
-      } catch {
-        log?.warn?.("TOKEN", `${provider.toUpperCase()} | retry after refresh failed`);
+      } catch (retryErr) {
+        // Refresh succeeded but the retry leg failed (network blip, AbortError,
+        // executor throw). Don't swallow — the operator-visible signal "the user
+        // saw 401 even though auth was actually fixed" is much more confusing
+        // than the original 401 alone. Surface at error level with sanitization.
+        log?.error?.(
+          "TOKEN",
+          `${provider.toUpperCase()} | retry after refresh failed: ${sanitizeErrorMessage(retryErr)}`
+        );
       }
     } else {
       log?.warn?.("TOKEN", `${provider.toUpperCase()} | refresh failed`);
@@ -4105,8 +4172,8 @@ export async function handleChatCore({
       message = details.message;
       retryAfterMs = details.retryAfterMs;
       upstreamErrorBody = details.responseBody;
-      upstreamErrorCode = details.errorCode;
-      upstreamErrorType = details.errorType;
+      upstreamErrorCode = details.errorCode as string | undefined;
+      upstreamErrorType = details.errorType as string | undefined;
     }
 
     // T06/T10/T36: classify provider errors and persist terminal account states.

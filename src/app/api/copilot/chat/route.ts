@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { processCopilotChat } from "@/lib/copilot/engine";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
-import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
+import { sanitizeErrorMessage, buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
 
 const copilotRequestSchema = z.object({
   messages: z
@@ -23,7 +23,7 @@ const copilotRequestSchema = z.object({
  * Accepts user messages about OmniRoute configuration and returns
  * tool-based responses + AI guidance.
  *
- * Body: { messages: [{ role: "user"|"assistant", content: string }] }
+ * Body: { messages: [{ role: "user"|"assistant"|"system", content: string }] }
  */
 export async function POST(request: Request) {
   const authError = await requireManagementAuth(request);
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const rawBody = await request.json();
     const validation = validateBody(copilotRequestSchema, rawBody);
     if (isValidationFailure(validation)) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+      return NextResponse.json(buildErrorBody(400, validation.error), { status: 400 });
     }
 
     const response = await processCopilotChat(validation.data);
@@ -41,6 +41,6 @@ export async function POST(request: Request) {
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     const message = sanitizeErrorMessage(error);
-    return NextResponse.json({ error: `Copilot error: ${message}` }, { status: 500 });
+    return NextResponse.json(buildErrorBody(500, `Copilot error: ${message}`), { status: 500 });
   }
 }

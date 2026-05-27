@@ -123,7 +123,7 @@ const COMBOS_CACHE_TTL_MS = 10_000;
 
 async function getCombosCachedForChat(): Promise<unknown[]> {
   const now = Date.now();
-  if (combosCachePromise && now - combosCacheTs < COMBOS_CACHE_TTL_MS) {
+  if (combosCachePromise !== null && now - combosCacheTs < COMBOS_CACHE_TTL_MS) {
     return combosCachePromise;
   }
 
@@ -152,6 +152,27 @@ function intersectAllowedConnectionIds(primary: unknown, secondary: unknown): st
 }
 
 const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 504]);
+
+/**
+ * Wrap a Request-like object so callers reading `.signal` see a merged signal
+ * combining the original request signal with an extra per-call signal (e.g. a
+ * combo per-model timeout). Returns the original request unchanged when no
+ * extra signal is provided, so the hot path stays a no-op.
+ */
+function wrapRequestWithExtraSignal(request: any, extraSignal: AbortSignal | null) {
+  if (!extraSignal || !request) return request;
+  const baseSignal: AbortSignal | null | undefined = request?.signal ?? null;
+  const mergedSignal: AbortSignal = baseSignal
+    ? AbortSignal.any([baseSignal, extraSignal])
+    : extraSignal;
+  return new Proxy(request, {
+    get(target, prop, receiver) {
+      if (prop === "signal") return mergedSignal;
+      const value = target[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
 
 /**
  * Handle chat completion request
@@ -200,6 +221,9 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
 
   // Log request endpoint and model
   const url = new URL(request.url);
+  // `let` because the middleware-hook pipeline (line ~319) may reassign this
+  // when a hook rewrites the target model. Previously declared `const`, which
+  // broke turbopack/strict-mode builds (PR [PR #2670](file:///home/diegosouzapw/dev/proxys/OmniRoute/package.json#L2670) regression).
   let modelStr = body.model;
 
   // Count messages (support both messages[] and input[] formats)
@@ -308,7 +332,7 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
     >,
     model: modelStr,
     combo: undefined,
-    apiKeyInfo: apiKeyInfo as Record<string, unknown> | undefined,
+    apiKeyInfo: apiKeyInfo as unknown as Record<string, unknown> | undefined,
     log,
   });
 
@@ -507,13 +531,14 @@ export async function handleChat(request: any, clientRawRequest: any = null) {
           allowedConnectionIds?: string[] | null;
           failoverBeforeRetry?: boolean;
           trafficType?: "production" | "shadow";
+          modelAbortSignal?: AbortSignal | null;
         }
       ) =>
         handleSingleModelChat(
           b,
           m,
           clientRawRequest,
-          request,
+          wrapRequestWithExtraSignal(request, target?.modelAbortSignal ?? null),
           combo.name,
           apiKeyInfo,
           telemetry,
@@ -684,22 +709,12 @@ async function handleSingleModelChat(
     return handleComboChat({
       body,
       combo: redirectCombo,
-      handleSingleModel: (
-        b: any,
-        m: string,
-        target?: {
-          connectionId?: string | null;
-          executionKey?: string | null;
-          stepId?: string | null;
-          failoverBeforeRetry?: boolean;
-          trafficType?: "production" | "shadow";
-        }
-      ) =>
+      handleSingleModel: (b: any, m: string, target?: any) =>
         handleSingleModelChat(
           b,
           m,
           clientRawRequest,
-          request,
+          wrapRequestWithExtraSignal(request, target?.modelAbortSignal ?? null),
           redirectCombo.name ?? modelStr,
           apiKeyInfo,
           telemetry,
@@ -822,7 +837,6 @@ async function handleSingleModelChat(
               {
                 sessionKey: runtimeOptions.sessionAffinityKey ?? runtimeOptions.sessionId ?? null,
                 excludeConnectionIds: Array.from(excludedConnectionIds),
-                sessionKey: runtimeOptions.sessionId ?? null,
                 sessionAffinityTtlMs: Number.isFinite(
                   Number((runtimeOptions.cachedSettings as any)?.codexSessionAffinityTtlMs)
                 )

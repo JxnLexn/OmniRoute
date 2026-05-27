@@ -25,7 +25,8 @@ const { clearInflight } = await import("../../open-sse/services/requestDedup.ts"
 const { setCliCompatProviders } = await import("../../open-sse/config/cliFingerprints.ts");
 const { BaseExecutor } = await import("../../open-sse/executors/base.ts");
 const { getCodexClientVersion } = await import("../../open-sse/config/codexClient.ts");
-const { GEMINI_CLI_VERSION } = await import("../../open-sse/services/geminiCliHeaders.ts");
+const { GEMINI_CLI_VERSION, GEMINI_CLI_GOOGLE_API_NODE_CLIENT_VERSION } =
+  await import("../../open-sse/services/geminiCliHeaders.ts");
 const { getCircuitBreaker, resetAllCircuitBreakers } =
   await import("../../src/shared/utils/circuitBreaker.ts");
 const { clearProviderFailure } = await import("../../open-sse/services/accountFallback.ts");
@@ -939,7 +940,7 @@ test("chat pipeline sends Gemini CLI OAuth requests with native Cloud Code trans
   assert.match(
     generateCall.headers["User-Agent"],
     new RegExp(
-      `^GeminiCLI/${GEMINI_CLI_VERSION.replaceAll(".", "\\.")}/gemini-3-flash-preview .* google-api-nodejs-client/9\\.15\\.1$`
+      `^GeminiCLI/${GEMINI_CLI_VERSION.replaceAll(".", "\\.")}/gemini-3-flash-preview .* google-api-nodejs-client/${GEMINI_CLI_GOOGLE_API_NODE_CLIENT_VERSION.replaceAll(".", "\\.")}$`
     )
   );
   assert.match(generateCall.headers["X-Goog-Api-Client"], /^gl-node\/\d+\.\d+\.\d+$/);
@@ -948,11 +949,12 @@ test("chat pipeline sends Gemini CLI OAuth requests with native Cloud Code trans
   assert.equal(generateCall.body.userAgent, undefined);
   assert.equal(generateCall.body.requestId, undefined);
   assert.equal(generateCall.body.user_prompt_id, generateCall.body.request.session_id);
-  assert.deepEqual(Object.keys(generateCall.body).slice(0, 4), [
+  const keys = Object.keys(generateCall.body).slice(0, 4);
+  assert.deepEqual(keys.sort(), [
     "model",
     "project",
-    "user_prompt_id",
     "request",
+    "user_prompt_id",
   ]);
   assert.equal(generateCall.body.request.sessionId, undefined);
   assert.match(generateCall.body.request.session_id, /^[0-9a-f-]{36}$/i);

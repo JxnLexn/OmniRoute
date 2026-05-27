@@ -9,6 +9,7 @@ import {
 import { registerHook, getAllHooks } from "@/lib/middleware/registry";
 import type { HookConfig, CreateHookRequest } from "@/lib/middleware/types";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
+import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 
 const hookScopeSchema = z.union([
   z.object({ type: z.literal("global") }),
@@ -31,6 +32,9 @@ const createHookSchema = z.object({
  * GET /api/middleware/hooks — List all registered hooks
  */
 export async function GET(request: Request) {
+  const authError = await requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     const url = new URL(request.url);
     const hookName = url.searchParams.get("name");
@@ -72,6 +76,9 @@ export async function GET(request: Request) {
  * Body: { name, description?, priority?, scope?, code }
  */
 export async function POST(request: Request) {
+  const authError = await requireManagementAuth(request);
+  if (authError) return authError;
+
   try {
     const rawBody = await request.json();
     const validation = validateBody(createHookSchema, rawBody);

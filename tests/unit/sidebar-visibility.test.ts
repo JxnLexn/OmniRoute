@@ -43,6 +43,7 @@ test("primary sidebar items place limits after cache", () => {
       "endpoints",
       "api-manager",
       "providers",
+      "embedded-services",
       "combos",
       "quota",
       "context-caveman",
@@ -54,8 +55,6 @@ test("primary sidebar items place limits after cache", () => {
       "api-endpoints",
       "webhooks",
       "proxy",
-      "mitm-proxy",
-      "1proxy",
     ]
   );
 });
@@ -82,9 +81,14 @@ test("sidebar visibility drops stale entries from saved settings", () => {
     sidebarVisibility.getSectionItems(section).map((item) => item.id)
   );
 
-  assert.equal(sidebarVisibility.HIDEABLE_SIDEBAR_ITEM_IDS.includes("auto-combo"), false);
-  assert.equal(allSidebarItemIds.includes("auto-combo"), false);
-  assert.deepEqual(sidebarVisibility.normalizeHiddenSidebarItems(["auto-combo", "logs"]), ["logs"]);
+  assert.equal(
+    (sidebarVisibility.HIDEABLE_SIDEBAR_ITEM_IDS as readonly string[]).includes("auto-combo"),
+    false
+  );
+  assert.equal((allSidebarItemIds as string[]).includes("auto-combo"), false);
+  assert.deepEqual(sidebarVisibility.normalizeHiddenSidebarItems(["auto-combo" as any, "logs"]), [
+    "logs",
+  ]);
 });
 
 test("help sidebar exposes changelog after docs and issues", () => {

@@ -1,4 +1,4 @@
-FROM node:26.2.0-trixie-slim AS builder
+FROM node:24-trixie-slim AS builder
 WORKDIR /app
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -12,18 +12,25 @@ COPY scripts/build/postinstall.mjs ./scripts/build/postinstall.mjs
 COPY scripts/build/postinstallSupport.mjs ./scripts/build/postinstallSupport.mjs
 COPY scripts/build/native-binary-compat.mjs ./scripts/build/native-binary-compat.mjs
 ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
+# --ignore-scripts blocks the install/postinstall hooks of dependencies,
+# closing the supply-chain attack surface where a transitive dep can run
+# arbitrary code at install time. OmniRoute's own postinstall (
+# better-sqlite3 binary touchups, @swc/helpers copy) is only needed when
+# a packaged app/node_modules is unpacked — inside the Docker builder we
+# are doing a fresh native-platform install, so dropping the scripts is safe.
+#
+# We REQUIRE a committed package-lock.json so resolved dependency versions
+# are reproducible.
+RUN test -f package-lock.json \
+  || (echo "package-lock.json is required for reproducible Docker builds" >&2 && exit 1)
 RUN --mount=type=cache,target=/root/.npm \
-  if [ -f package-lock.json ]; then \
-    npm ci --no-audit --no-fund --legacy-peer-deps; \
-    else \
-    npm install --no-audit --no-fund --legacy-peer-deps; \
-    fi
+  npm ci --no-audit --no-fund --legacy-peer-deps --ignore-scripts
 
 COPY . ./
 RUN --mount=type=cache,target=/app/.next/cache \
   mkdir -p /app/data && npm run build -- --webpack
 
-FROM node:26.2.0-trixie-slim AS runner-base
+FROM node:24-trixie-slim AS runner-base
 WORKDIR /app
 
 LABEL org.opencontainers.image.title="omniroute" \
@@ -71,7 +78,14 @@ COPY --from=builder /app/scripts/build/runtime-env.mjs ./build/runtime-env.mjs
 COPY --from=builder /app/scripts/build/bootstrap-env.mjs ./build/bootstrap-env.mjs
 COPY --from=builder /app/scripts/dev/healthcheck.mjs ./healthcheck.mjs
 
+# Hand /app over to the baked-in `node` non-root user (UID/GID 1000) so the
+# runtime process never holds root privileges. The chown happens after all
+# COPYs so it covers files originally owned by root in the builder stage.
+RUN chown -R node:node /app
+
 EXPOSE 20128
+
+USER node
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["node", "healthcheck.mjs"]
@@ -79,6 +93,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 CMD ["node", "dev/run-standalone.mjs"]
 
 FROM runner-base AS runner-cli
+
+# Drop back to root briefly so we can install system + global npm packages,
+# then return to the `node` non-root user before the CMD inherited from
+# runner-base runs.
+USER root
 
 # Install system dependencies required by openclaw (git+ssh references).
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -91,3 +110,5 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Install CLI tools globally. Separate layer from apt for better cache reuse.
 RUN --mount=type=cache,target=/root/.npm \
   npm install -g --no-audit --no-fund @openai/codex @anthropic-ai/claude-code droid openclaw@latest
+
+USER node

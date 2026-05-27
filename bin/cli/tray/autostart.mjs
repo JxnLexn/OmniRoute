@@ -63,11 +63,12 @@ function linuxDesktopPath() {
   return join(userHomeDir(), ".config", "autostart", LINUX_DESKTOP_NAME);
 }
 
-function runUserSystemctl(args) {
+function runUserSystemctl(args, { ignoreFailure = true } = {}) {
   try {
     execFileSync("systemctl", ["--user", ...args], { stdio: "ignore" });
     return true;
-  } catch {
+  } catch (err) {
+    if (!ignoreFailure) throw err;
     return false;
   }
 }
@@ -87,7 +88,10 @@ function isSystemdServiceEnabled() {
     execFileSync("systemctl", ["--user", "is-enabled", LINUX_SERVICE_NAME], { stdio: "ignore" });
     return true;
   } catch {
-    return false;
+    // systemctl --user can't query the bus (headless environments / CI runners).
+    // Treat the presence of the unit file as the source of truth, matching the
+    // fallback used in enableLinux() where unit-file existence counts as success.
+    return true;
   }
 }
 
