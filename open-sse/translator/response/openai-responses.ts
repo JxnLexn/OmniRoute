@@ -428,7 +428,9 @@ function emitToolCall(state, emit, tc) {
   // Codex custom tools (apply_patch) are surfaced to the client as custom_tool_call items
   // and stream their raw patch via custom_tool_call_input.* events instead of the
   // function_call_arguments.* events used for regular function tools. (#1007)
-  const isCustomTool = (state.funcNames[tcIdx] || funcName) === "apply_patch";
+  const toolName = state.funcNames[tcIdx] || funcName || "";
+  const isCustomTool =
+    toolName === "apply_patch" || state.customToolNames?.has?.(toolName) === true;
 
   if (!state.funcCallIds[tcIdx] && newCallId) {
     state.funcCallIds[tcIdx] = newCallId;
@@ -464,12 +466,9 @@ function emitToolCall(state, emit, tc) {
     const emittedDelta = nextArgs.slice(existingArgs.length);
     state.funcArgsBuf[tcIdx] = nextArgs;
 
-    if (refCallId && emittedDelta) {
-      const deltaEvent = isCustomTool
-        ? "response.custom_tool_call_input.delta"
-        : "response.function_call_arguments.delta";
-      emit(deltaEvent, {
-        type: deltaEvent,
+    if (refCallId && emittedDelta && !isCustomTool) {
+      emit("response.function_call_arguments.delta", {
+        type: "response.function_call_arguments.delta",
         item_id: `fc_${refCallId}`,
         output_index: tcIdx,
         delta: emittedDelta,
@@ -483,7 +482,9 @@ function closeToolCall(state, emit, idx, recordAsCompleted = true) {
   if (callId && !state.funcItemDone[idx]) {
     const normalizedIndex = normalizeOutputIndex(idx);
     const args = state.funcArgsBuf[idx] || "{}";
-    const isCustomTool = (state.funcNames[idx] || "") === "apply_patch";
+    const toolName = state.funcNames[idx] || "";
+    const isCustomTool =
+      toolName === "apply_patch" || state.customToolNames?.has?.(toolName) === true;
 
     let funcItem;
     if (isCustomTool) {
@@ -496,6 +497,13 @@ function closeToolCall(state, emit, idx, recordAsCompleted = true) {
       } catch {
         // Not JSON — fall back to the raw buffered arguments.
       }
+
+      emit("response.custom_tool_call_input.delta", {
+        type: "response.custom_tool_call_input.delta",
+        item_id: `fc_${callId}`,
+        output_index: normalizedIndex,
+        delta: rawInput,
+      });
 
       emit("response.custom_tool_call_input.done", {
         type: "response.custom_tool_call_input.done",

@@ -6,7 +6,7 @@ import { CORS_HEADERS } from "../utils/cors.ts";
 
 import { handleChatCore } from "./chatCore.ts";
 import { convertResponsesApiFormat } from "../translator/helpers/responsesApiHelper.ts";
-import { collectResponsesTools } from "../translator/request/openai-responses/additionalTools.ts";
+import { collectResponsesCustomToolNames } from "../translator/request/openai-responses/additionalTools.ts";
 import { createResponsesApiTransformStream } from "../transformer/responsesTransformer.ts";
 import { createSseHeartbeatTransform, HEARTBEAT_SHAPES } from "../utils/sseHeartbeat.ts";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "../config/constants.ts";
@@ -37,12 +37,7 @@ export async function handleResponsesCore({
   signal,
 }) {
   const inputItems = Array.isArray(body?.input) ? body.input : [];
-  const customToolNames = new Set(
-    collectResponsesTools(body?.tools, inputItems)
-      .filter((tool) => tool?.type === "custom" && typeof tool.name === "string")
-      .map((tool) => tool.name.trim())
-      .filter(Boolean)
-  );
+  const customToolNames = collectResponsesCustomToolNames(body?.tools, inputItems);
 
   // Convert Responses API format to Chat Completions format
   const convertedBody = convertResponsesApiFormat(body, credentials);
