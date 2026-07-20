@@ -4,16 +4,41 @@ function toRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
 
-function toolIdentity(value: unknown): string | null {
+function toolName(value: unknown): string {
   const tool = toRecord(value);
   const nestedFunction = toRecord(tool.function);
-  const name =
-    typeof tool.name === "string" && tool.name.trim()
-      ? tool.name.trim()
-      : typeof nestedFunction.name === "string" && nestedFunction.name.trim()
-        ? nestedFunction.name.trim()
-        : "";
-  return name ? `name:${name}` : null;
+  return typeof tool.name === "string" && tool.name.trim()
+    ? tool.name.trim()
+    : typeof nestedFunction.name === "string" && nestedFunction.name.trim()
+      ? nestedFunction.name.trim()
+      : "";
+}
+
+function toolIdentity(value: unknown): string | null {
+  const tool = toRecord(value);
+  const name = toolName(value);
+  if (!name) return null;
+
+  // Namespace names are only containers. The Chat conversion flattens their nested
+  // tools, so they do not collide with a top-level function of the same name.
+  return tool.type === "namespace" ? `namespace:${name}` : `name:${name}`;
+}
+
+function mergeNamespaceTools(first: unknown, second: unknown): unknown[] {
+  const merged: unknown[] = [];
+  const seenNames = new Set<string>();
+
+  for (const source of [first, second]) {
+    if (!Array.isArray(source)) continue;
+    for (const tool of source) {
+      const name = toolName(tool);
+      if (name && seenNames.has(name)) continue;
+      if (name) seenNames.add(name);
+      merged.push(tool);
+    }
+  }
+
+  return merged;
 }
 
 /**
@@ -24,13 +49,23 @@ function toolIdentity(value: unknown): string | null {
  * changed alongside the conversation transcript. Both forms describe tools available for
  * the current response and therefore share the same downstream conversion path.
  *
- * Explicit top-level declarations take precedence on named collisions. Unnamed hosted tools are
- * kept verbatim because their type can be repeated with distinct provider-specific configuration.
- * This keeps the established request contract stable and prevents duplicate function names from
- * reaching strict upstreams.
+ * Explicit top-level declarations take precedence on named collisions. Same-named namespaces are
+ * merged before deduplication because the Chat conversion flattens their members. Unnamed hosted
+ * tools are kept verbatim because their type can be repeated with distinct provider-specific
+ * configuration. This keeps the established request contract stable and prevents duplicate
+ * function names from reaching strict upstreams.
  */
 export function collectResponsesTools(rootTools: unknown, inputItems: unknown[]): unknown[] {
-  const sources: unknown[][] = [Array.isArray(rootTools) ? rootTools : []];
+  const rootToolList = Array.isArray(rootTools) ? rootTools : [];
+  const rootNames = new Set(
+    rootToolList
+      .map((tool) => {
+        const record = toRecord(tool);
+        return record.type === "namespace" ? "" : toolName(tool);
+      })
+      .filter(Boolean)
+  );
+  const sources: unknown[][] = [rootToolList];
 
   for (const itemValue of inputItems) {
     const item = toRecord(itemValue);
@@ -41,8 +76,30 @@ export function collectResponsesTools(rootTools: unknown, inputItems: unknown[])
 
   const merged: unknown[] = [];
   const seen = new Set<string>();
+  const namespaceIndexes = new Map<string, number>();
   for (const source of sources) {
     for (const tool of source) {
+      const toolRecord = toRecord(tool);
+      if (toolRecord.type === "namespace") {
+        const namespaceName = toolName(tool);
+        const existingIndex = namespaceName ? namespaceIndexes.get(namespaceName) : undefined;
+        const namespaceTools = Array.isArray(toolRecord.tools)
+          ? toolRecord.tools.filter((member) => !rootNames.has(toolName(member)))
+          : toolRecord.tools;
+        if (existingIndex !== undefined) {
+          const existing = toRecord(merged[existingIndex]);
+          merged[existingIndex] = {
+            ...toolRecord,
+            ...existing,
+            tools: mergeNamespaceTools(existing.tools, namespaceTools),
+          };
+          continue;
+        }
+        if (namespaceName) namespaceIndexes.set(namespaceName, merged.length);
+        merged.push({ ...toolRecord, tools: namespaceTools });
+        continue;
+      }
+
       const identity = toolIdentity(tool);
       if (identity && seen.has(identity)) continue;
       if (identity) seen.add(identity);

@@ -119,6 +119,110 @@ test("Responses -> Chat merges multiple tool sources and keeps top-level declara
   assert.equal(result.tools[0].function.description, "Authoritative top-level declaration");
 });
 
+test("Responses -> Chat preserves a namespace that shares a name with a function", () => {
+  const result = openaiResponsesToOpenAIRequest(
+    "any-model",
+    {
+      input: [
+        {
+          type: "additional_tools",
+          tools: [
+            {
+              type: "namespace",
+              name: "server",
+              tools: [
+                {
+                  name: "mcp__server__read",
+                  parameters: { type: "object", properties: {} },
+                },
+              ],
+            },
+          ],
+        },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "go" }] },
+      ],
+      tools: [{ type: "function", name: "server", parameters: { type: "object" } }],
+    },
+    false,
+    { provider: "another-provider" }
+  ) as ChatRequest;
+
+  assert.deepEqual(
+    result.tools.map((tool) => tool.function.name),
+    ["server", "mcp__server__read"]
+  );
+});
+
+test("Responses -> Chat merges members from same-named namespaces", () => {
+  const result = openaiResponsesToOpenAIRequest(
+    "any-model",
+    {
+      input: [
+        {
+          type: "additional_tools",
+          tools: [
+            {
+              type: "namespace",
+              name: "server",
+              tools: [
+                {
+                  name: "mcp__server__write",
+                  parameters: { type: "object", properties: {} },
+                },
+              ],
+            },
+          ],
+        },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "go" }] },
+      ],
+      tools: [
+        {
+          type: "namespace",
+          name: "server",
+          tools: [
+            {
+              name: "mcp__server__read",
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        },
+      ],
+    },
+    false,
+    { provider: "another-provider" }
+  ) as ChatRequest;
+
+  assert.deepEqual(
+    result.tools.map((tool) => tool.function.name),
+    ["mcp__server__read", "mcp__server__write"]
+  );
+});
+
+test("Responses -> Chat gives top-level tools precedence over namespaced members", () => {
+  const result = openaiResponsesToOpenAIRequest(
+    "any-model",
+    {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "go" }] }],
+      tools: [
+        { type: "function", name: "exec", parameters: { type: "object" } },
+        {
+          type: "namespace",
+          name: "commands",
+          tools: [{ type: "custom", name: "exec", description: "Shadowed custom tool" }],
+        },
+      ],
+    },
+    false,
+    { provider: "another-provider" }
+  ) as ChatRequest;
+
+  assert.deepEqual(
+    result.tools.map((tool) => tool.function.name),
+    ["exec"]
+  );
+  assert.equal(result.tools[0].function.description, undefined);
+});
+
 test("Responses -> Chat validates tools supplied through additional_tools", () => {
   assert.throws(
     () =>
