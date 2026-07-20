@@ -73,6 +73,7 @@ import { defaultClaudeToolType } from "./chatCore/claudeToolDefaults.ts";
 import { injectSystemPrompt, injectCustomSystemPrompt } from "../services/systemPrompt.ts";
 import { translateRequest, needsTranslation } from "../translator/index.ts";
 import { FORMATS } from "../translator/formats.ts";
+import { collectResponsesCustomToolNames } from "../translator/request/openai-responses/additionalTools.ts";
 import { sanitizeKiroTools } from "../utils/kiroSanitizer.ts";
 import { splitMisplacedToolResults } from "../translator/helpers/claudeHelper.ts";
 import {
@@ -398,6 +399,11 @@ export async function handleChatCore({
     model
   );
   const isModelScope = () => isModelScopeProvider(provider, credentials?.providerSpecificData);
+  const responsesInputItems = Array.isArray(body?.input) ? body.input : [];
+  const customToolNames =
+    apiFormat === FORMATS.OPENAI_RESPONSES
+      ? collectResponsesCustomToolNames(body?.tools, responsesInputItems)
+      : new Set<string>();
   const startTime = Date.now();
   // Per-request trace id + checkpoint helper. Lets us see exactly which await
   // a hung request was sitting on in `[STAGE_TRACE]` log lines. Uses crypto RNG
@@ -4457,7 +4463,9 @@ export async function handleChatCore({
       resolveSuppressThinkClose({
         userAgent: streamUserAgent,
         thinkingMarkerHeader,
-      })
+        clientResponseFormat,
+      }),
+      customToolNames
     );
   } else {
     log?.debug?.("STREAM", `Standard passthrough mode`);
