@@ -1,0 +1,82 @@
+name: Build v3.8.50 Admission Hotfix Image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fork-admission-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/jxnlexn/omniroute
+
+jobs:
+  build:
+    name: Build and Push AMD64 Image
+    if: github.repository == 'JxnLexn/OmniRoute'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify hotfix source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./package.json").version')" = "3.8.50"
+          test -f src/shared/middleware/admissionBudget.ts
+          test -f src/shared/middleware/ingestByteAdmission.ts
+          grep -q "resolveLegacyCountCap" src/shared/middleware/chatBodyAdmission.ts
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=3.8.50-admission-hotfix
+            type=raw,value=main
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=OmniRoute v3.8.50 Admission Hotfix
+            org.opencontainers.image.description=OmniRoute v3.8.50 with the isolated chat admission fan-out fix
+            org.opencontainers.image.url=https://github.com/JxnLexn/OmniRoute
+            org.opencontainers.image.source=https://github.com/JxnLexn/OmniRoute
+            org.opencontainers.image.version=3.8.50-admission-hotfix
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runner-base
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=fork-admission-hotfix-amd64
+          cache-to: type=gha,scope=fork-admission-hotfix-amd64,mode=max
+          provenance: mode=max
+          sbom: true

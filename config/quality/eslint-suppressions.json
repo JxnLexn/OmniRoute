@@ -2936,11 +2936,6 @@
       "count": 1
     }
   },
-  "src/shared/middleware/chatBodyAdmission.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
   "src/shared/services/apiKeyResolver.ts": {
     "no-restricted-imports": {
       "count": 1
