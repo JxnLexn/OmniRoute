@@ -1,4 +1,5 @@
 import type { RegistryEntry } from "../../shared.ts";
+import { VERTEX_XAI_MODELS } from "../../../vertexModels.ts";
 
 export const vertexProvider: RegistryEntry = {
   id: "vertex",
@@ -27,6 +28,7 @@ export const vertexProvider: RegistryEntry = {
     { id: "DeepSeek-V4-Pro", name: "DeepSeek V4 Pro (Vertex Partner)" },
     { id: "Qwen3.6-35B-A3B", name: "Qwen3.6 35B A3B (Vertex Partner)" },
     { id: "GLM-5.1-FP8", name: "GLM-5.1 (Vertex Partner)" },
+    ...VERTEX_XAI_MODELS,
     { id: "claude-fable-5", name: "Claude Fable 5 (Vertex)", targetFormat: "claude" },
     { id: "claude-opus-5", name: "Claude Opus 5 (Vertex)", targetFormat: "claude" },
     { id: "claude-sonnet-5", name: "Claude Sonnet 5 (Vertex)", targetFormat: "claude" },
@@ -40,4 +42,7 @@ export const vertexProvider: RegistryEntry = {
     { id: "claude-haiku-4-5", name: "Claude Haiku 4.5 (Vertex)", targetFormat: "claude" },
   ],
   passthroughModels: true,
+  // Gemini + publisher discovery are independent APIs. A partial successful response must not
+  // hide curated partner models omitted by another publisher catalog.
+  liveCatalogAuthoritative: false,
 };

@@ -1,6 +1,7 @@
 import { SignJWT, importPKCS8 } from "jose";
 import { BaseExecutor, ExecuteInput } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
+import { isVertexXaiModel, normalizeVertexModelId } from "../config/vertexModels.ts";
 
 interface ServiceAccount {
   type: string;
@@ -37,7 +38,7 @@ export function parseSAFromApiKey(apiKey: string): ServiceAccount {
  * A Service Account credential is a JSON object (type/client_email/private_key). A Vertex AI
  * Express-mode API key is an opaque non-JSON string. Distinguishing them lets the executor
  * support BOTH: Service Account JSON (JWT → OAuth → project-scoped endpoint + Bearer auth) and
- * Express keys (project-less publisher endpoint + x-goog-api-key auth), instead of failing every
+ * Express keys (project-less publisher endpoint + query-key auth), instead of failing every
  * Express key with "requires a valid Service Account JSON".
  */
 export function looksLikeServiceAccountJson(apiKey: string): boolean {
@@ -52,7 +53,9 @@ export function looksLikeServiceAccountJson(apiKey: string): boolean {
 
 /** True for a Vertex AI Express-mode API key (a non-empty, non-JSON, non-OAuth credential). */
 export function isExpressApiKey(apiKey?: string | null): boolean {
-  return typeof apiKey === "string" && apiKey.trim().length > 0 && !looksLikeServiceAccountJson(apiKey);
+  return (
+    typeof apiKey === "string" && apiKey.trim().length > 0 && !looksLikeServiceAccountJson(apiKey)
+  );
 }
 
 export async function getAccessToken(sa: ServiceAccount): Promise<string> {
@@ -134,8 +137,11 @@ const PARTNER_MODELS = new Set([
 ]);
 
 function isPartnerModel(model: string) {
-  const normalizedModel = model.toLowerCase();
-  return [...PARTNER_MODELS].some((prefix) => normalizedModel.startsWith(prefix));
+  const normalizedModel = normalizeVertexModelId(model).toLowerCase();
+  return (
+    isVertexXaiModel(normalizedModel) ||
+    [...PARTNER_MODELS].some((prefix) => normalizedModel.startsWith(prefix))
+  );
 }
 
 // Anthropic models need their own branch: they use Vertex's native Anthropic Messages API
@@ -143,7 +149,7 @@ function isPartnerModel(model: string) {
 // other PARTNER_MODELS entries (DeepSeek, Qwen, Llama, Mistral, GLM) go through — the OpenAI-shaped
 // endpoint 404s/"malformed argument"s for Claude models on at least some projects.
 function isClaudeModel(model: string) {
-  return model.toLowerCase().startsWith("claude-");
+  return normalizeVertexModelId(model).toLowerCase().startsWith("claude-");
 }
 
 // Defensive normalizer: target-format resolution for manually-added custom Claude models under
@@ -153,7 +159,8 @@ function isClaudeModel(model: string) {
 // converts a Gemini-shaped body to Anthropic Messages shape so the executor works either way,
 // independent of that unresolved upstream resolution gap.
 function toAnthropicBody(body: Record<string, unknown>): Record<string, unknown> {
-  const contents = body.contents as Array<{ role?: string; parts?: Array<{ text?: string }> }> | undefined;
+  const contents = body.contents as
+    Array<{ role?: string; parts?: Array<{ text?: string }> }> | undefined;
   if (!Array.isArray(contents)) return body;
 
   const messages = contents.map((c) => ({
@@ -161,7 +168,8 @@ function toAnthropicBody(body: Record<string, unknown>): Record<string, unknown>
     content: (c.parts || []).map((p) => p.text || "").join(""),
   }));
   const generationConfig = body.generationConfig as { maxOutputTokens?: number } | undefined;
-  const systemInstruction = body.systemInstruction as { parts?: Array<{ text?: string }> } | undefined;
+  const systemInstruction = body.systemInstruction as
+    { parts?: Array<{ text?: string }> } | undefined;
 
   const converted: Record<string, unknown> = {
     messages,
@@ -244,7 +252,11 @@ function synthesizeClaudeSse(response: Record<string, unknown>): string {
     } else if (block.type === "thinking") {
       events.push({
         event: "content_block_start",
-        data: { type: "content_block_start", index, content_block: { type: "thinking", thinking: "" } },
+        data: {
+          type: "content_block_start",
+          index,
+          content_block: { type: "thinking", thinking: "" },
+        },
       });
       if (block.thinking) {
         events.push({
@@ -280,6 +292,21 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   async execute(input: ExecuteInput) {
+    const canonicalModel = normalizeVertexModelId(input.model);
+    let canonicalBody = input.body;
+    if (canonicalBody && typeof canonicalBody === "object" && !Array.isArray(canonicalBody)) {
+      const bodyRecord = canonicalBody as Record<string, unknown>;
+      if (typeof bodyRecord.model === "string") {
+        const canonicalBodyModel = normalizeVertexModelId(bodyRecord.model);
+        if (canonicalBodyModel !== bodyRecord.model) {
+          canonicalBody = { ...bodyRecord, model: canonicalBodyModel };
+        }
+      }
+    }
+    if (canonicalModel !== input.model || canonicalBody !== input.body) {
+      input = { ...input, model: canonicalModel, body: canonicalBody };
+    }
+
     const { credentials, log, model, stream } = input;
     // Defensive: trim stray surrounding whitespace from a pasted credential.
     if (typeof credentials.apiKey === "string") {
@@ -287,7 +314,11 @@ export class VertexExecutor extends BaseExecutor {
     }
     // Service Account JSON → mint a short-lived OAuth token (Bearer). An Express-mode API key is
     // sent as-is via x-goog-api-key (see buildHeaders), so no token exchange is needed for it.
-    if (credentials.apiKey && !credentials.accessToken && looksLikeServiceAccountJson(credentials.apiKey)) {
+    if (
+      credentials.apiKey &&
+      !credentials.accessToken &&
+      looksLikeServiceAccountJson(credentials.apiKey)
+    ) {
       try {
         const sa = parseSAFromApiKey(credentials.apiKey);
         credentials.accessToken = await getAccessToken(sa);
@@ -318,7 +349,10 @@ export class VertexExecutor extends BaseExecutor {
       const response = result instanceof Response ? result : result?.response;
       if (response?.ok) {
         const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/json") && !contentType.includes("text/event-stream")) {
+        if (
+          contentType.includes("application/json") &&
+          !contentType.includes("text/event-stream")
+        ) {
           const jsonText = await response.text();
           let newBody = jsonText;
           let newContentType = contentType;
@@ -346,17 +380,18 @@ export class VertexExecutor extends BaseExecutor {
   }
 
   buildUrl(model: string, stream: boolean, urlIndex = 0, credentials: any = null) {
+    const canonicalModel = normalizeVertexModelId(model);
     // Vertex AI Express mode: project-less v1 publisher endpoint with the API key passed as a
     // ?key= query parameter (verified working contract — same as the CaptionAI GeminiClient). The
     // Express key is NOT accepted as a Bearer/OAuth credential or via x-goog-api-key on this API.
     if (isExpressApiKey(credentials?.apiKey) && !credentials?.accessToken) {
       const expressKey = encodeURIComponent(String(credentials.apiKey).trim());
-      if (isPartnerModel(model)) {
-        // Partner (Anthropic/etc.) models are not available via Express keys; best-effort.
+      if (isPartnerModel(canonicalModel)) {
+        // OpenAI-compatible partner models use the project-less MaaS endpoint in Express mode.
         return `https://aiplatform.googleapis.com/v1/publishers/openapi/chat/completions?key=${expressKey}`;
       }
       const op = stream ? "streamGenerateContent?alt=sse&" : "generateContent?";
-      return `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:${op}key=${expressKey}`;
+      return `https://aiplatform.googleapis.com/v1/publishers/google/models/${canonicalModel}:${op}key=${expressKey}`;
     }
 
     const region = credentials?.providerSpecificData?.region || "us-central1";
@@ -371,17 +406,17 @@ export class VertexExecutor extends BaseExecutor {
       }
     }
 
-    if (isClaudeModel(model)) {
+    if (isClaudeModel(canonicalModel)) {
       // streamRawPredict?alt=sse was verified to return a single plain JSON body (not real SSE
       // framing) rather than actual chunked events, which breaks the SSE parser upstream
       // ("stream ended before producing a non-ping SSE event"). rawPredict is confirmed reliable
       // for both streaming and non-streaming requests; always use it here.
-      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/anthropic/models/${model}:rawPredict`;
+      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/anthropic/models/${canonicalModel}:rawPredict`;
     }
-    if (isPartnerModel(model)) {
+    if (isPartnerModel(canonicalModel)) {
       return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions`;
     }
-    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models/${model}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
+    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models/${canonicalModel}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
   }
 
   buildHeaders(credentials: any, stream = true) {
