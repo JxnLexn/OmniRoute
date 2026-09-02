@@ -16,7 +16,7 @@ import type { FreeModelBudget } from "./freeModelCatalog.ts";
  * rewrites file timestamps on every deploy, which would report a months-old
  * catalog as "updated today". Bump this whenever the entries below change.
  */
-export const FREE_CATALOG_CURATED_AT = "2026-08-20";
+export const FREE_CATALOG_CURATED_AT = "2026-09-02";
 
 export const FREE_MODEL_BUDGETS: FreeModelBudget[] = [
   { provider: "chatgpt-web", modelId: "gpt-5.6-luna-free", displayName: "GPT-5.6 Luna (Free)", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "chatgpt-web-free", tos: "caution" },
@@ -425,10 +425,10 @@ export const FREE_MODEL_BUDGETS: FreeModelBudget[] = [
   { provider: "vertex", modelId: "gemini-3.1-flash-lite", displayName: "Gemini 3.1 Flash Lite (Vertex)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
   { provider: "vertex", modelId: "gemini-3-flash-preview", displayName: "Gemini 3 Flash Preview (Vertex)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
   { provider: "vertex", modelId: "gemma-4-31b-it", displayName: "Gemma 4 31B (Vertex)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
-  { provider: "vertex", modelId: "DeepSeek-V4-Flash", displayName: "DeepSeek V4 Flash (Vertex Partner)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
-  { provider: "vertex", modelId: "DeepSeek-V4-Pro", displayName: "DeepSeek V4 Pro (Vertex Partner)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
-  { provider: "vertex", modelId: "Qwen3.6-35B-A3B", displayName: "Qwen3.6 35B A3B (Vertex Partner)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
-  { provider: "vertex", modelId: "GLM-5.1-FP8", displayName: "GLM-5.1 (Vertex Partner)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
+  { provider: "vertex", modelId: "deepseek-ai/deepseek-v3.2-maas", displayName: "DeepSeek V3.2 (Vertex MaaS)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
+  { provider: "vertex", modelId: "deepseek-ai/deepseek-v3.1-maas", displayName: "DeepSeek V3.1 (Vertex MaaS)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
+  { provider: "vertex", modelId: "qwen/qwen3-next-80b-a3b-instruct-maas", displayName: "Qwen3 Next 80B Instruct (Vertex MaaS)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
+  { provider: "vertex", modelId: "zai-org/glm-5-maas", displayName: "GLM 5 (Vertex MaaS)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
   { provider: "vertex", modelId: "claude-opus-4-7", displayName: "Claude Opus 4.7 (Vertex)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
   { provider: "vertex", modelId: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6 (Vertex)", monthlyTokens: 0, creditTokens: 300000000, freeType: "one-time-initial", poolKey: "vertex", tos: "caution" },
   { provider: "requesty", modelId: "openai/gpt-oss-120b", displayName: "GPT-OSS 120B (Requesty free)", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "requesty-free", tos: "ok" },

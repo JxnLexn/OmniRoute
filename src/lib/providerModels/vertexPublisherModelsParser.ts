@@ -42,13 +42,19 @@ export function parseVertexPublisherModels(
       "";
     if (!rawId) return [];
     const actions = model.supportedActions;
-    if (actions && !actions.viewRestApi && !actions.openGenerationAiStudio && !actions.openGenie) {
+    if (
+      actions &&
+      !actions.viewRestApi &&
+      !actions.openGenerationAiStudio &&
+      !actions.openGenie &&
+      !actions.requestAccess
+    ) {
       return [];
     }
     const routableId = rawId.includes("/") ? rawId : `publishers/${publisher}/models/${rawId}`;
     const id = normalizeVertexModelId(routableId);
     const targetFormat = getVertexModelTargetFormat(routableId);
-    if (!id || !targetFormat) return [];
+    if (!id || !targetFormat || /(?:^|[-/])ocr(?:-|$)/i.test(id)) return [];
 
     return [
       {

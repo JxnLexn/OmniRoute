@@ -76,9 +76,9 @@ test("Vertex xAI models always resolve to the OpenAI wire format", () => {
 
 test("all curated and generic Vertex partner IDs resolve away from Gemini format", () => {
   const openAiIds = [
-    "DeepSeek-V4-Pro",
-    "Qwen3.6-35B-A3B",
-    "GLM-5.1-FP8",
+    "deepseek-ai/deepseek-v3.2-maas",
+    "qwen/qwen3-next-80b-a3b-instruct-maas",
+    "zai-org/glm-5-maas",
     "mistralai/mistral-medium-3",
     "publishers/meta/models/llama-4-maverick-17b-128e-instruct-maas",
     "publishers/future-vendor/models/future-chat-maas",
