@@ -53,12 +53,14 @@ test.after(async () => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-test("Vertex Express uses an intentional curated catalog without unsupported API probes", async () => {
+test("Vertex Express prefers live discovery and then uses the intentional Gemini catalog", async () => {
   const connection = await seedVertexConnection({ apiKey: "vertex-express-key" });
   let fetchCalls = 0;
-  globalThis.fetch = async () => {
+  const headers: HeadersInit[] = [];
+  globalThis.fetch = async (_url, init) => {
     fetchCalls += 1;
-    throw new Error("Vertex Express model listing must not be called");
+    headers.push(init?.headers || {});
+    return Response.json({ error: { status: "UNAUTHENTICATED" } }, { status: 401 });
   };
 
   const response = await callRoute(connection.id);
@@ -67,17 +69,53 @@ test("Vertex Express uses an intentional curated catalog without unsupported API
   assert.equal(response.status, 200);
   assert.equal(body.source, "local_catalog");
   assert.equal(body.intentional, true);
-  assert.match(body.warning, /Vertex Express.*model-list API/i);
-  assert.equal(fetchCalls, 0);
+  assert.match(body.warning, /live catalog.*API key.*curated Express catalog/i);
+  assert.ok(fetchCalls > 0);
   assert.ok(
-    body.models.some(
-      (model: { id?: string; targetFormat?: string }) =>
-        model.id === "grok-4.6" && model.targetFormat === "openai"
-    )
+    headers.every((header) => new Headers(header).get("x-goog-api-key") === "vertex-express-key")
   );
+  assert.ok(body.models.some((model: { id?: string }) => model.id.startsWith("gemini-")));
+  assert.ok(!body.models.some((model: { id?: string }) => model.id.includes("grok")));
 });
 
-test("Vertex Service Account discovery merges Gemini, Anthropic, and xAI catalogs", async () => {
+test("Vertex authorization API key imports live partner catalogs before fallback", async () => {
+  const connection = await seedVertexConnection({ apiKey: "vertex-authorization-key" });
+  const calledUrls: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    const calledUrl = String(url);
+    calledUrls.push(calledUrl);
+    assert.equal(new Headers(init?.headers).get("x-goog-api-key"), "vertex-authorization-key");
+    if (calledUrl.includes("generativelanguage.googleapis.com")) {
+      return Response.json({ error: { status: "PERMISSION_DENIED" } }, { status: 403 });
+    }
+    if (calledUrl.includes("/publishers/xai/models")) {
+      return Response.json({
+        publisherModels: [{ name: "publishers/xai/models/grok-4.6" }],
+      });
+    }
+    if (calledUrl.includes("/publishers/mistralai/models")) {
+      return Response.json({
+        publisherModels: [{ name: "publishers/mistralai/models/mistral-medium-3" }],
+      });
+    }
+    return Response.json({ publisherModels: [] });
+  };
+
+  const response = await callRoute(connection.id);
+  const body = await response.json();
+  const byId = new Map(
+    body.models.map((model: { id: string; targetFormat?: string }) => [model.id, model])
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(body.source, "api");
+  assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");
+  assert.equal(byId.get("mistral-medium-3")?.targetFormat, "openai");
+  assert.ok(calledUrls.some((url) => url.includes("/publishers/xai/models")));
+  assert.ok(calledUrls.some((url) => url.includes("/publishers/mistralai/models")));
+});
+
+test("Vertex Service Account discovery merges Gemini and all partner transport catalogs", async () => {
   const connection = await seedVertexConnection({
     accessToken: "ya29.vertex-model-discovery",
   });
@@ -106,6 +144,11 @@ test("Vertex Service Account discovery merges Gemini, Anthropic, and xAI catalog
         publisherModels: [{ name: "publishers/xai/models/grok-4.6" }],
       });
     }
+    if (calledUrl.includes("/publishers/mistralai/models")) {
+      return Response.json({
+        publisherModels: [{ name: "publishers/mistralai/models/mistral-medium-3" }],
+      });
+    }
     return new Response("unexpected discovery URL", { status: 500 });
   };
 
@@ -119,7 +162,8 @@ test("Vertex Service Account discovery merges Gemini, Anthropic, and xAI catalog
   assert.equal(body.source, "api");
   assert.ok(byId.has("gemini-3.1-pro-preview"));
   assert.equal(byId.get("claude-sonnet-4-6")?.targetFormat, "claude");
-  assert.equal(byId.get("grok-4.6")?.targetFormat, "openai");
+  assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");
+  assert.equal(byId.get("mistral-medium-3")?.targetFormat, "openai");
   assert.ok(calledUrls.some((url) => url.includes("/v1beta1/publishers/xai/models")));
 });
 
@@ -143,6 +187,6 @@ test("Vertex Service Account keeps usable xAI results when Gemini listing is blo
 
   assert.equal(response.status, 200);
   assert.equal(body.source, "api");
-  assert.ok(body.models.some((model: { id?: string }) => model.id === "grok-4.6"));
+  assert.ok(body.models.some((model: { id?: string }) => model.id === "xai/grok-4.6"));
   assert.match(body.warning, /some Vertex catalogs were unavailable/i);
 });

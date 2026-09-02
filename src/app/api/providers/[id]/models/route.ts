@@ -1844,24 +1844,44 @@ export async function GET(
       }
 
       if (queryKey) {
-        // Vertex Express can execute publisher models with an API key, but the Model Garden LIST
-        // API rejects API-key authentication. Treat the curated registry as the intended source
-        // instead of probing the unrelated Generative Language API and reporting a false outage.
+        // Try the live API first: service-account-bound Authorization Keys can authenticate a
+        // principal and list Model Garden, while standard Express keys normally cannot. The latter
+        // must fall back without being reported as a general provider outage.
+        const { discoverVertexModelsWithApiKey } =
+          await import("@/lib/providerModels/vertexModelDiscovery");
+        const discovery = await discoverVertexModelsWithApiKey({
+          apiKey: queryKey,
+          fetchImpl: (url, init) =>
+            safeOutboundFetch(url, {
+              ...SAFE_OUTBOUND_FETCH_PRESETS.modelsPagination,
+              guard: getProviderOutboundGuard(),
+              proxyConfig: proxy,
+              ...init,
+            }),
+        });
+
+        if (discovery.models.length > 0) {
+          return buildApiDiscoveryResponse(discovery.models, discovery.warning);
+        }
+
+        const { isVertexExpressModel } = await import("@omniroute/open-sse/config/vertexModels.ts");
         const expressCatalog = mergeLocalCatalogModels(
           getModelsByProviderId(provider) || [],
           getStaticModelsForProvider(provider) || []
-        ).map((model) => ({
-          ...model,
-          name: model.name || model.id,
-          owned_by: provider,
-        }));
+        )
+          .filter((model) => isVertexExpressModel(model.id))
+          .map((model) => ({
+            ...model,
+            name: model.name || model.id,
+            owned_by: provider,
+          }));
         return buildResponse({
           provider,
           connectionId,
           models: expressCatalog,
           source: "local_catalog",
           intentional: true,
-          warning: "Vertex Express does not expose a model-list API — using curated catalog",
+          warning: "No live catalog available for this API key — using curated Express catalog",
         });
       }
 
