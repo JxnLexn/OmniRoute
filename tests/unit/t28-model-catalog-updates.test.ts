@@ -117,6 +117,14 @@ test("T28: vertex catalog includes partner models when vertex executor is availa
     (m) => m.modelId
   );
 
+  assert.ok(vertexIds.includes("gemini-3.7-flash"));
+  assert.ok(vertexIds.includes("gemini-3.6-flash"));
+  assert.ok(vertexIds.includes("gemini-3.5-flash"));
+  assert.ok(vertexIds.includes("gemini-3.5-flash-lite"));
+  assert.ok(vertexIds.includes("gemini-2.5-pro"));
+  assert.ok(vertexIds.includes("gemini-2.5-flash"));
+  assert.ok(vertexIds.includes("gemini-2.5-flash-lite"));
+  assert.ok(!vertexIds.includes("gemma-4-31b-it"));
   assert.ok(vertexIds.includes("deepseek-ai/deepseek-v3.2-maas"));
   assert.ok(vertexIds.includes("deepseek-ai/deepseek-v3.1-maas"));
   assert.ok(vertexIds.includes("qwen/qwen3-next-80b-a3b-instruct-maas"));
@@ -126,6 +134,9 @@ test("T28: vertex catalog includes partner models when vertex executor is availa
   assert.ok(!vertexIds.includes("Qwen3.6-35B-A3B"));
   assert.ok(!vertexIds.includes("GLM-5.1-FP8"));
   assert.ok(vertexBudgetIds.includes("deepseek-ai/deepseek-v3.2-maas"));
+  assert.ok(vertexBudgetIds.includes("gemini-3.7-flash"));
+  assert.ok(vertexBudgetIds.includes("gemini-3.6-flash"));
+  assert.ok(!vertexBudgetIds.includes("gemma-4-31b-it"));
   assert.ok(vertexBudgetIds.includes("qwen/qwen3-next-80b-a3b-instruct-maas"));
   assert.ok(vertexBudgetIds.includes("zai-org/glm-5-maas"));
   assert.ok(!vertexBudgetIds.includes("DeepSeek-V4-Flash"));

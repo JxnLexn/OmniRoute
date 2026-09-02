@@ -1945,11 +1945,9 @@ export async function GET(
             ? [model as { id: string; name?: string }]
             : []
         );
-        return buildApiDiscoveryResponse(
-          mergeLocalCatalogModels(liveModels, curatedVertexCatalog),
-          discovery.warning,
-          { catalogMode: "live_publishers_curated_google" }
-        );
+        return buildApiDiscoveryResponse(liveModels, discovery.warning, {
+          catalogMode: "live_vertex_catalog",
+        });
       }
 
       const fallback = buildDiscoveryFallbackResponse({

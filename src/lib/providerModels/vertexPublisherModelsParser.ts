@@ -15,9 +15,14 @@ export interface VertexPublisherDiscoveryModel {
   id: string;
   name: string;
   supportedEndpoints: ["chat"];
-  targetFormat: "claude" | "openai";
+  targetFormat?: "claude" | "openai";
   owned_by: string;
   description?: string;
+}
+
+function isCurrentGeminiChatModel(id: string): boolean {
+  const match = id.match(/^gemini-(\d+(?:\.\d+)?)-(flash-lite|flash|pro)(?:-preview)?$/i);
+  return !!match && Number(match[1]) >= 2.5;
 }
 
 /** Parse one Model Garden publisher-list envelope into model ids accepted by Vertex inference. */
@@ -41,6 +46,21 @@ export function parseVertexPublisherModels(
       (typeof model.id === "string" && model.id) ||
       "";
     if (!rawId) return [];
+    const routableId = rawId.includes("/") ? rawId : `publishers/${publisher}/models/${rawId}`;
+    const id = normalizeVertexModelId(routableId);
+    if (publisher.toLowerCase() === "google") {
+      if (!isCurrentGeminiChatModel(id)) return [];
+      return [
+        {
+          id,
+          name: (typeof model.displayName === "string" && model.displayName) || id,
+          supportedEndpoints: ["chat"] as ["chat"],
+          owned_by: publisher,
+          ...(typeof model.description === "string" ? { description: model.description } : {}),
+        },
+      ];
+    }
+
     const actions = model.supportedActions;
     if (
       actions &&
@@ -51,8 +71,6 @@ export function parseVertexPublisherModels(
     ) {
       return [];
     }
-    const routableId = rawId.includes("/") ? rawId : `publishers/${publisher}/models/${rawId}`;
-    const id = normalizeVertexModelId(routableId);
     const targetFormat = getVertexModelTargetFormat(routableId);
     if (!id || !targetFormat || /(?:^|[-/])ocr(?:-|$)/i.test(id)) return [];
 
