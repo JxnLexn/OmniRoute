@@ -72,6 +72,34 @@ test("generic Vertex publisher parser accepts models and publisherModels envelop
     ),
     []
   );
+  assert.equal(
+    parseVertexPublisherModels(
+      {
+        publisherModels: [
+          {
+            name: "publishers/mistralai/models/mistral-medium-3",
+            supportedActions: { requestAccess: {} },
+          },
+        ],
+      },
+      "mistralai"
+    )[0]?.id,
+    "mistral-medium-3"
+  );
+  assert.deepEqual(
+    parseVertexPublisherModels(
+      {
+        publisherModels: [
+          {
+            name: "publishers/mistralai/models/mistral-ocr-2505",
+            supportedActions: { requestAccess: {} },
+          },
+        ],
+      },
+      "mistralai"
+    ),
+    []
+  );
 });
 
 test("Vertex API-key discovery extracts its consumer project without probing Model Garden", async () => {

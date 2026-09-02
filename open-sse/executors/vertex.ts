@@ -27,11 +27,18 @@ export const VERTEX_OAUTH_SCOPES = [
 ] as const;
 
 export function parseSAFromApiKey(apiKey: string): ServiceAccount {
+  let parsed: ServiceAccount & { web?: unknown; installed?: unknown };
   try {
-    return JSON.parse(apiKey);
+    parsed = JSON.parse(apiKey);
   } catch {
     throw new Error("Vertex AI requires a valid Service Account JSON as the API key");
   }
+  if (parsed && typeof parsed === "object" && ("web" in parsed || "installed" in parsed)) {
+    throw new Error(
+      "OAuth client JSON is not a Service Account key; create a Service Account JSON key or provide an OAuth access token"
+    );
+  }
+  return parsed;
 }
 
 /**

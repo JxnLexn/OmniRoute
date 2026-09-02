@@ -2,6 +2,7 @@ import { parseGeminiModelsList } from "@/lib/providerModels/geminiModelsParser";
 import { parseVertexPublisherModels } from "@/lib/providerModels/vertexPublisherModelsParser";
 
 const GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
+const VERTEX_PUBLISHER_PAGE_SIZE = 300;
 const MAX_CATALOG_PAGES = 20;
 
 /**
@@ -65,7 +66,7 @@ async function discoverVertexModels(options: {
 }): Promise<VertexModelDiscoveryResult> {
   const { auth, fetchImpl } = options;
   const models: unknown[] = [];
-  let failureCount = 0;
+  let publisherFailureCount = 0;
 
   try {
     let pageUrl = GOOGLE_MODELS_URL;
@@ -76,7 +77,6 @@ async function discoverVertexModels(options: {
       pageCount += 1;
       const response = await fetchImpl(pageUrl, { method: "GET", headers: auth.headers });
       if (!response.ok) {
-        failureCount += 1;
         break;
       }
 
@@ -88,7 +88,8 @@ async function discoverVertexModels(options: {
       pageUrl = `${GOOGLE_MODELS_URL}&pageToken=${encodeURIComponent(nextPageToken)}`;
     }
   } catch {
-    failureCount += 1;
+    // The Generative Language models API intentionally rejects Service Accounts. Publisher
+    // discovery below is independent and remains authoritative for the live partner catalog.
   }
 
   const publisherResults = await Promise.all(
@@ -96,7 +97,7 @@ async function discoverVertexModels(options: {
       const publisherModels: unknown[] = [];
       let pageUrl =
         `https://aiplatform.googleapis.com/v1beta1/publishers/${publisher}/models` +
-        "?pageSize=1000";
+        `?pageSize=${VERTEX_PUBLISHER_PAGE_SIZE}`;
       let pageCount = 0;
       const seenTokens = new Set<string>();
 
@@ -105,7 +106,7 @@ async function discoverVertexModels(options: {
           pageCount += 1;
           const response = await fetchImpl(pageUrl, { method: "GET", headers: auth.headers });
           if (!response.ok) {
-            failureCount += 1;
+            publisherFailureCount += 1;
             break;
           }
 
@@ -116,10 +117,10 @@ async function discoverVertexModels(options: {
           seenTokens.add(nextPageToken);
           pageUrl =
             `https://aiplatform.googleapis.com/v1beta1/publishers/${publisher}/models` +
-            `?pageSize=1000&pageToken=${encodeURIComponent(nextPageToken)}`;
+            `?pageSize=${VERTEX_PUBLISHER_PAGE_SIZE}&pageToken=${encodeURIComponent(nextPageToken)}`;
         }
       } catch {
-        failureCount += 1;
+        publisherFailureCount += 1;
       }
 
       return publisherModels;
@@ -129,7 +130,7 @@ async function discoverVertexModels(options: {
 
   return {
     models,
-    ...(failureCount > 0 && models.length > 0
+    ...(publisherFailureCount > 0 && models.length > 0
       ? { warning: "Some Vertex catalogs were unavailable — imported available models" }
       : {}),
   };

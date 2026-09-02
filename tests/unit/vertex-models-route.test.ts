@@ -114,8 +114,13 @@ test("Vertex authorization API key detects and persists its project for curated 
   assert.equal(body.source, "local_catalog");
   assert.equal(body.intentional, true);
   assert.equal(body.projectIdAutoDetected, true);
-  assert.match(body.warning, /curated project-scoped catalog/i);
+  assert.equal(body.catalogMode, "curated_project");
+  assert.equal(body.warning, undefined);
   assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");
+  assert.equal(byId.get("zai-org/glm-5-maas")?.targetFormat, "openai");
+  assert.equal(byId.get("qwen/qwen3-next-80b-a3b-instruct-maas")?.targetFormat, "openai");
+  assert.ok(!byId.has("GLM-5.1-FP8"));
+  assert.ok(!byId.has("Qwen3.6-35B-A3B"));
   assert.equal(calledUrls.length, 1);
   assert.ok(calledUrls[0].includes("generativelanguage.googleapis.com"));
   assert.ok(!calledUrls[0].includes("vertex-authorization-key"));
@@ -174,6 +179,11 @@ test("Vertex Service Account discovery merges Gemini and all partner transport c
   assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");
   assert.equal(byId.get("mistral-medium-3")?.targetFormat, "openai");
   assert.ok(calledUrls.some((url) => url.includes("/v1beta1/publishers/xai/models")));
+  assert.ok(
+    calledUrls
+      .filter((url) => url.includes("/v1beta1/publishers/"))
+      .every((url) => url.includes("pageSize=300"))
+  );
 });
 
 test("Vertex Service Account keeps usable xAI results when Gemini listing is blocked", async () => {
@@ -197,5 +207,6 @@ test("Vertex Service Account keeps usable xAI results when Gemini listing is blo
   assert.equal(response.status, 200);
   assert.equal(body.source, "api");
   assert.ok(body.models.some((model: { id?: string }) => model.id === "xai/grok-4.6"));
-  assert.match(body.warning, /some Vertex catalogs were unavailable/i);
+  assert.equal(body.catalogMode, "live_publishers_curated_google");
+  assert.equal(body.warning, undefined);
 });

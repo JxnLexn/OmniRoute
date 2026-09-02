@@ -249,9 +249,11 @@ export default function EditConnectionModal({
     ? getWebSessionCredentialLabel(t, webSessionCredential, apiKeyOptional)
     : isAwsPolly
       ? providerText(t, "awsPollySecretAccessKeyLabel", "AWS Secret Access Key")
-      : apiKeyOptional
-        ? t("apiKeyOptionalLabel")
-        : t("apiKeyLabel");
+      : isVertex
+        ? providerText(t, "vertexCredentialLabel", "API Key or Service Account JSON")
+        : apiKeyOptional
+          ? t("apiKeyOptionalLabel")
+          : t("apiKeyLabel");
   const apiCredentialPlaceholder = isWebSessionCredential
     ? webSessionCredential.placeholder
     : isVertex
@@ -259,13 +261,19 @@ export default function EditConnectionModal({
       : t("enterNewApiKey");
   const apiCredentialHint = isWebSessionCredential
     ? getWebSessionCredentialHint(t, webSessionCredential, providerDisplayName, true)
-    : isLocalSelfHostedProvider
-      ? t("localProviderApiKeyOptionalHint", {
-          provider: localProviderMetadata?.name || provider || "",
-        })
-      : apiKeyOptional
-        ? t("apiKeyOptionalHint")
-        : t("leaveBlankKeepCurrentApiKey");
+    : isVertex
+      ? providerText(
+          t,
+          "vertexCredentialHint",
+          "API keys use the curated project catalog. Service Account JSON enables live Model Garden discovery."
+        )
+      : isLocalSelfHostedProvider
+        ? t("localProviderApiKeyOptionalHint", {
+            provider: localProviderMetadata?.name || provider || "",
+          })
+        : apiKeyOptional
+          ? t("apiKeyOptionalHint")
+          : t("leaveBlankKeepCurrentApiKey");
   // Modal-open form initialization from the loaded connection — applied as a
   // render-phase adjustment guarded by the previously initialized connection
   // (react.dev "adjusting state when a prop changes") instead of the former

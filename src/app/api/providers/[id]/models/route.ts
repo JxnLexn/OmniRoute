@@ -1844,6 +1844,15 @@ export async function GET(
         );
       }
 
+      const curatedVertexCatalog = mergeLocalCatalogModels(
+        getModelsByProviderId(provider) || [],
+        getStaticModelsForProvider(provider) || []
+      ).map((model) => ({
+        ...model,
+        name: model.name || model.id,
+        owned_by: provider,
+      }));
+
       if (queryKey) {
         // API keys can execute project-scoped partner models, but Google rejects API-key auth for
         // Model Garden's publishers.models.list. The Gemini models.list error still carries the
@@ -1874,29 +1883,19 @@ export async function GET(
         }
 
         const { isVertexExpressModel } = await import("@omniroute/open-sse/config/vertexModels.ts");
-        const curatedCatalog = mergeLocalCatalogModels(
-          getModelsByProviderId(provider) || [],
-          getStaticModelsForProvider(provider) || []
-        ).map((model) => ({
-          ...model,
-          name: model.name || model.id,
-          owned_by: provider,
-        }));
-
         if (projectId) {
           const liveGeminiModels = discovery.models.flatMap((model) =>
             model && typeof model === "object" && "id" in model && typeof model.id === "string"
               ? [model as { id: string; name?: string }]
               : []
           );
-          const projectCatalog = mergeLocalCatalogModels(liveGeminiModels, curatedCatalog);
+          const projectCatalog = mergeLocalCatalogModels(liveGeminiModels, curatedVertexCatalog);
 
           if (liveGeminiModels.length > 0) {
-            return buildApiDiscoveryResponse(
-              projectCatalog,
-              "Vertex Model Garden listing requires OAuth — using live Gemini plus curated project-scoped partner catalog",
-              { projectIdAutoDetected }
-            );
+            return buildApiDiscoveryResponse(projectCatalog, undefined, {
+              projectIdAutoDetected,
+              catalogMode: "live_gemini_curated_project",
+            });
           }
 
           return buildResponse({
@@ -1906,8 +1905,7 @@ export async function GET(
             source: "local_catalog",
             intentional: true,
             projectIdAutoDetected,
-            warning:
-              "Vertex Model Garden listing requires OAuth — using curated project-scoped catalog",
+            catalogMode: "curated_project",
           });
         }
 
@@ -1915,7 +1913,9 @@ export async function GET(
           return buildApiDiscoveryResponse(discovery.models, discovery.warning);
         }
 
-        const expressCatalog = curatedCatalog.filter((model) => isVertexExpressModel(model.id));
+        const expressCatalog = curatedVertexCatalog.filter((model) =>
+          isVertexExpressModel(model.id)
+        );
         return buildResponse({
           provider,
           connectionId,
@@ -1940,7 +1940,16 @@ export async function GET(
       });
 
       if (discovery.models.length > 0) {
-        return buildApiDiscoveryResponse(discovery.models, discovery.warning);
+        const liveModels = discovery.models.flatMap((model) =>
+          model && typeof model === "object" && "id" in model && typeof model.id === "string"
+            ? [model as { id: string; name?: string }]
+            : []
+        );
+        return buildApiDiscoveryResponse(
+          mergeLocalCatalogModels(liveModels, curatedVertexCatalog),
+          discovery.warning,
+          { catalogMode: "live_publishers_curated_google" }
+        );
       }
 
       const fallback = buildDiscoveryFallbackResponse({
