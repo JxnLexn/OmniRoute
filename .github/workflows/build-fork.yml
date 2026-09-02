@@ -1,4 +1,4 @@
-name: Build v3.8.50 Admission Hotfix Image
+name: Build v3.8.50 Admission + Vertex Hotfix Image
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: fork-admission-hotfix-${{ github.ref }}
+  group: fork-admission-vertex-hotfix-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -38,6 +38,10 @@ jobs:
           test -f src/shared/middleware/admissionBudget.ts
           test -f src/shared/middleware/ingestByteAdmission.ts
           grep -q "resolveLegacyCountCap" src/shared/middleware/chatBodyAdmission.ts
+          test -f open-sse/config/vertexModels.ts
+          test -f src/lib/providerModels/vertexModelDiscovery.ts
+          grep -q "discoverVertexModelsWithApiKey" src/app/api/providers/\[id\]/models/route.ts
+          grep -q "getVertexModelTransport" open-sse/executors/vertex.ts
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -55,15 +59,15 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=3.8.50-admission-hotfix
+            type=raw,value=3.8.50-admission-vertex-hotfix
             type=raw,value=main
             type=sha,prefix=sha-
           labels: |
-            org.opencontainers.image.title=OmniRoute v3.8.50 Admission Hotfix
-            org.opencontainers.image.description=OmniRoute v3.8.50 with the isolated chat admission fan-out fix
+            org.opencontainers.image.title=OmniRoute v3.8.50 Admission + Vertex Hotfix
+            org.opencontainers.image.description=OmniRoute v3.8.50 with isolated chat admission and Vertex AI model-discovery/routing fixes
             org.opencontainers.image.url=https://github.com/JxnLexn/OmniRoute
             org.opencontainers.image.source=https://github.com/JxnLexn/OmniRoute
-            org.opencontainers.image.version=3.8.50-admission-hotfix
+            org.opencontainers.image.version=3.8.50-admission-vertex-hotfix
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=MIT
 
@@ -76,7 +80,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=fork-admission-hotfix-amd64
-          cache-to: type=gha,scope=fork-admission-hotfix-amd64,mode=max
+          cache-from: type=gha,scope=fork-admission-vertex-hotfix-amd64
+          cache-to: type=gha,scope=fork-admission-vertex-hotfix-amd64,mode=max
           provenance: mode=max
           sbom: true
