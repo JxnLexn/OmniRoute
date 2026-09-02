@@ -15,6 +15,7 @@ import {
   getCachedProviderConnectionById,
   getModelIsHidden,
   resolveProxyForProvider,
+  updateProviderConnection,
 } from "@/lib/localDb";
 import {
   SAFE_OUTBOUND_FETCH_PRESETS,
@@ -1852,9 +1853,10 @@ export async function GET(
       }
 
       if (queryKey) {
-        // Try the live API first: service-account-bound Authorization Keys can authenticate a
-        // principal and list Model Garden, while standard Express keys normally cannot. The latter
-        // must fall back without being reported as a general provider outage.
+        // API keys can execute project-scoped partner models, but Google rejects API-key auth for
+        // Model Garden's publishers.models.list. The Gemini models.list error still carries the
+        // bound consumer project, which lets us persist the missing project association and expose
+        // the full curated partner catalog without asking the operator to duplicate that metadata.
         const { discoverVertexModelsWithApiKey } =
           await import("@/lib/providerModels/vertexModelDiscovery");
         const discovery = await discoverVertexModelsWithApiKey({
@@ -1868,21 +1870,60 @@ export async function GET(
             }),
         });
 
+        const providerData = asRecord(connection.providerSpecificData);
+        const configuredProjectId =
+          toNonEmptyString(connection.projectId) ||
+          toNonEmptyString(providerData.projectId) ||
+          toNonEmptyString(providerData.project);
+        const projectId = configuredProjectId || discovery.projectId || null;
+        const projectIdAutoDetected = !configuredProjectId && !!discovery.projectId;
+        if (projectIdAutoDetected && projectId) {
+          await updateProviderConnection(connectionId, { projectId });
+        }
+
+        const { isVertexExpressModel } = await import("@omniroute/open-sse/config/vertexModels.ts");
+        const curatedCatalog = mergeLocalCatalogModels(
+          getModelsByProviderId(provider) || [],
+          getStaticModelsForProvider(provider) || []
+        ).map((model) => ({
+          ...model,
+          name: model.name || model.id,
+          owned_by: provider,
+        }));
+
+        if (projectId) {
+          const liveGeminiModels = discovery.models.flatMap((model) =>
+            model && typeof model === "object" && "id" in model && typeof model.id === "string"
+              ? [model as { id: string; name?: string }]
+              : []
+          );
+          const projectCatalog = mergeLocalCatalogModels(liveGeminiModels, curatedCatalog);
+
+          if (liveGeminiModels.length > 0) {
+            return buildApiDiscoveryResponse(
+              projectCatalog,
+              "Vertex Model Garden listing requires OAuth — using live Gemini plus curated project-scoped partner catalog",
+              { projectIdAutoDetected }
+            );
+          }
+
+          return buildResponse({
+            provider,
+            connectionId,
+            models: projectCatalog,
+            source: "local_catalog",
+            intentional: true,
+            projectIdAutoDetected,
+            warning:
+              "Vertex Model Garden listing requires OAuth — using curated project-scoped catalog",
+          });
+        }
+
         if (discovery.models.length > 0) {
           return buildApiDiscoveryResponse(discovery.models, discovery.warning);
         }
 
-        const { isVertexExpressModel } = await import("@omniroute/open-sse/config/vertexModels.ts");
-        const expressCatalog = mergeLocalCatalogModels(
-          getModelsByProviderId(provider) || [],
-          getStaticModelsForProvider(provider) || []
-        )
-          .filter((model) => isVertexExpressModel(model.id))
-          .map((model) => ({
-            ...model,
-            name: model.name || model.id,
-            owned_by: provider,
-          }));
+        const expressCatalog = curatedCatalog.filter((model) => isVertexExpressModel(model.id));
         return buildResponse({
           provider,
           connectionId,
