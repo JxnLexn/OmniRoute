@@ -1,7 +1,7 @@
 import { SignJWT, importPKCS8 } from "jose";
 import { BaseExecutor, ExecuteInput } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
-import { isVertexXaiModel, normalizeVertexModelId } from "../config/vertexModels.ts";
+import { getVertexModelTransport, normalizeVertexModelId } from "../config/vertexModels.ts";
 
 interface ServiceAccount {
   type: string;
@@ -118,38 +118,19 @@ export async function getAccessToken(sa: ServiceAccount): Promise<string> {
   return accessToken;
 }
 
-const PARTNER_MODELS = new Set([
-  // Generic prefix, not pinned to a version: every Claude model on Vertex is an Anthropic
-  // partner model, never a Google-publisher one. Pinned prefixes (e.g. "claude-3-5-sonnet")
-  // silently break every time Anthropic ships a new generation — see issue #1985.
-  "claude-",
-  "deepseek-v3",
-  "deepseek-v3.2",
-  "deepseek-v4",
-  "deepseek-deepseek-r1",
-  "qwen3-next-80b",
-  "qwen3.6-",
-  "llama-3.1",
-  "mistral-",
-  "glm-5",
-  "glm-5.1",
-  "meta/llama",
-]);
-
 function isPartnerModel(model: string) {
-  const normalizedModel = normalizeVertexModelId(model).toLowerCase();
-  return (
-    isVertexXaiModel(normalizedModel) ||
-    [...PARTNER_MODELS].some((prefix) => normalizedModel.startsWith(prefix))
-  );
+  return getVertexModelTransport(model) === "openai";
 }
 
 // Anthropic models need their own branch: they use Vertex's native Anthropic Messages API
-// (publishers/anthropic/.../rawPredict), not the generic OpenAI-compatible partner endpoint the
-// other PARTNER_MODELS entries (DeepSeek, Qwen, Llama, Mistral, GLM) go through — the OpenAI-shaped
-// endpoint 404s/"malformed argument"s for Claude models on at least some projects.
+// (publishers/anthropic/.../rawPredict), not the generic OpenAI-compatible MaaS endpoint used by
+// xAI and open models. Mistral has a separate native rawPredict branch below.
 function isClaudeModel(model: string) {
-  return normalizeVertexModelId(model).toLowerCase().startsWith("claude-");
+  return getVertexModelTransport(model) === "anthropic";
+}
+
+function isMistralModel(model: string) {
+  return getVertexModelTransport(model) === "mistral";
 }
 
 // Defensive normalizer: target-format resolution for manually-added custom Claude models under
@@ -381,21 +362,26 @@ export class VertexExecutor extends BaseExecutor {
 
   buildUrl(model: string, stream: boolean, urlIndex = 0, credentials: any = null) {
     const canonicalModel = normalizeVertexModelId(model);
+    const configuredProject =
+      credentials?.projectId ||
+      credentials?.providerSpecificData?.projectId ||
+      credentials?.providerSpecificData?.project;
     // Vertex AI Express mode: project-less v1 publisher endpoint with the API key passed as a
-    // ?key= query parameter (verified working contract — same as the CaptionAI GeminiClient). The
-    // Express key is NOT accepted as a Bearer/OAuth credential or via x-goog-api-key on this API.
-    if (isExpressApiKey(credentials?.apiKey) && !credentials?.accessToken) {
+    // ?key= query parameter. Express currently exposes Gemini models only; opaque Authorization
+    // Keys can use project-scoped APIs when a projectId is configured on the connection.
+    if (isExpressApiKey(credentials?.apiKey) && !credentials?.accessToken && !configuredProject) {
       const expressKey = encodeURIComponent(String(credentials.apiKey).trim());
-      if (isPartnerModel(canonicalModel)) {
-        // OpenAI-compatible partner models use the project-less MaaS endpoint in Express mode.
-        return `https://aiplatform.googleapis.com/v1/publishers/openapi/chat/completions?key=${expressKey}`;
+      if (getVertexModelTransport(canonicalModel) !== "gemini") {
+        throw new Error(
+          "Vertex partner models require project-scoped credentials; Express API keys support Gemini models only"
+        );
       }
       const op = stream ? "streamGenerateContent?alt=sse&" : "generateContent?";
       return `https://aiplatform.googleapis.com/v1/publishers/google/models/${canonicalModel}:${op}key=${expressKey}`;
     }
 
     const region = credentials?.providerSpecificData?.region || "us-central1";
-    let project = "unknown-project";
+    let project = configuredProject || "unknown-project";
 
     if (credentials?.apiKey) {
       try {
@@ -406,17 +392,29 @@ export class VertexExecutor extends BaseExecutor {
       }
     }
 
+    const opaqueApiKey =
+      isExpressApiKey(credentials?.apiKey) && !credentials?.accessToken
+        ? encodeURIComponent(String(credentials.apiKey).trim())
+        : null;
+    const apiKeySuffix = opaqueApiKey ? `?key=${opaqueApiKey}` : "";
+
     if (isClaudeModel(canonicalModel)) {
       // streamRawPredict?alt=sse was verified to return a single plain JSON body (not real SSE
       // framing) rather than actual chunked events, which breaks the SSE parser upstream
       // ("stream ended before producing a non-ping SSE event"). rawPredict is confirmed reliable
       // for both streaming and non-streaming requests; always use it here.
-      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/anthropic/models/${canonicalModel}:rawPredict`;
+      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/anthropic/models/${canonicalModel}:rawPredict${apiKeySuffix}`;
+    }
+    if (isMistralModel(canonicalModel)) {
+      const operation = stream ? "streamRawPredict" : "rawPredict";
+      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/mistralai/models/${canonicalModel}:${operation}${apiKeySuffix}`;
     }
     if (isPartnerModel(canonicalModel)) {
-      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions`;
+      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions${apiKeySuffix}`;
     }
-    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models/${canonicalModel}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
+    const operation = stream ? "streamGenerateContent?alt=sse" : "generateContent";
+    const querySeparator = opaqueApiKey ? (stream ? "&" : "?") : "";
+    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models/${canonicalModel}:${operation}${querySeparator}${opaqueApiKey ? `key=${opaqueApiKey}` : ""}`;
   }
 
   buildHeaders(credentials: any, stream = true) {
