@@ -1,4 +1,5 @@
 import { generateModels, generateAliasMap, type RegistryModel } from "./providerRegistry.ts";
+import { isVertexXaiModel } from "./vertexModels.ts";
 
 // Lazy PROVIDER_MODELS: deferred until first property access to speed up startup.
 // The Proxy defers `generateModels()` from module-evaluation time to the first read.
@@ -231,6 +232,10 @@ export function getModelTargetFormat(aliasOrId: string, modelId: string): string
   // ponytail: Claude models on Vertex use rawPredict with Anthropic Messages format,
   // not the Gemini generateContent format. Mirrors executor isClaudeModel() check.
   if ((alias === "vertex" || alias === "vp") && /^claude-/i.test(bareModelId)) return "claude";
+  // Model Garden shows xAI resource names (publishers/xai/models/...) while its MaaS endpoint
+  // expects a bare grok-* model in an OpenAI Chat Completions payload. Cover both static and
+  // manually-added future ids so they never inherit Vertex's Gemini wire format.
+  if ((alias === "vertex" || alias === "vp") && isVertexXaiModel(bareModelId)) return "openai";
   // Model-level targetFormat is provider-scoped: a catalog entry declares how THIS
   // provider's endpoint serves the model — do NOT import another provider's tag.
   // #9994 scoped this for providers WITH a catalog; #10072 extends it to catalogless

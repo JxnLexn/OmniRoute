@@ -86,7 +86,6 @@ import {
 } from "@/lib/providerModels/modelDiscovery";
 import { buildProviderModelsUrl, getDiscoveryClientVersionOptions } from "./discoveryClientVersion";
 import { getAdobeModels } from "./adobeFireflyDiscovery";
-import { parseGeminiModelsList } from "@/lib/providerModels/geminiModelsParser";
 import { getSyncedAvailableModels, getCustomModels, getModelIsHidden } from "@/lib/db/models";
 import { isConnectionUnavailableToAuxiliaryActivity } from "@/lib/exclusiveLeaseIsolation";
 import { fetchCursorAgentModels } from "@/lib/providerModels/cursorAgent";
@@ -613,9 +612,7 @@ export async function GET(
       try {
         const discovery = await discoverMaxaiModels({
           providerSpecificData: connection.providerSpecificData as
-            | Record<string, unknown>
-            | null
-            | undefined,
+            Record<string, unknown> | null | undefined,
           accessToken: apiKey || accessToken,
           fetchImpl: (url, init) =>
             safeOutboundFetch(url, {
@@ -1796,10 +1793,9 @@ export async function GET(
       const autoFetchDisabledResponse = maybeReturnAutoFetchDisabled();
       if (autoFetchDisabledResponse) return autoFetchDisabledResponse;
 
-      // Vertex AI lists models from the Generative Language `v1beta/models` endpoint, which both
-      // Express-mode API keys (via ?key=) and Service Account JSON (via a minted OAuth Bearer
-      // token) can reach. This surfaces the live catalog, including gemini-*-image models
-      // absent from the static registry list.
+      // Service Accounts combine the Generative Language Gemini list with Vertex Model Garden
+      // publisher lists. Express API keys can execute models but cannot authenticate to the
+      // Model Garden LIST API, so that credential mode uses the curated catalog below.
       const credential = (apiKey || "").trim();
       let queryKey: string | null = null;
       let bearerToken: string | null = null;
@@ -1847,103 +1843,49 @@ export async function GET(
         );
       }
 
-      const baseUrl = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (bearerToken) headers["Authorization"] = `Bearer ${bearerToken}`;
+      if (queryKey) {
+        // Vertex Express can execute publisher models with an API key, but the Model Garden LIST
+        // API rejects API-key authentication. Treat the curated registry as the intended source
+        // instead of probing the unrelated Generative Language API and reporting a false outage.
+        const expressCatalog = mergeLocalCatalogModels(
+          getModelsByProviderId(provider) || [],
+          getStaticModelsForProvider(provider) || []
+        ).map((model) => ({
+          ...model,
+          name: model.name || model.id,
+          owned_by: provider,
+        }));
+        return buildResponse({
+          provider,
+          connectionId,
+          models: expressCatalog,
+          source: "local_catalog",
+          intentional: true,
+          warning: "Vertex Express does not expose a model-list API — using curated catalog",
+        });
+      }
 
-      const allModels: any[] = [];
-      let pageUrl = queryKey ? `${baseUrl}&key=${encodeURIComponent(queryKey)}` : baseUrl;
-      let pageCount = 0;
-      const MAX_PAGES = 20;
-      const seenTokens = new Set<string>();
-
-      try {
-        while (pageUrl && pageCount < MAX_PAGES) {
-          pageCount++;
-          const response = await safeOutboundFetch(pageUrl, {
+      const { discoverVertexModelsWithBearer } =
+        await import("@/lib/providerModels/vertexModelDiscovery");
+      const discovery = await discoverVertexModelsWithBearer({
+        bearerToken,
+        fetchImpl: (url, init) =>
+          safeOutboundFetch(url, {
             ...SAFE_OUTBOUND_FETCH_PRESETS.modelsPagination,
             guard: getProviderOutboundGuard(),
             proxyConfig: proxy,
-            method: "GET",
-            headers,
-          });
+            ...init,
+          }),
+      });
 
-          if (!response.ok) {
-            // Avoid logging the raw upstream body (may contain sensitive data); status is enough.
-            console.log("[models] Vertex model discovery failed", {
-              provider,
-              status: response.status,
-            });
-            const fallback = buildDiscoveryFallbackResponse();
-            if (fallback) return fallback;
-            return NextResponse.json(
-              { error: `Failed to fetch Vertex models: ${response.status}` },
-              { status: response.status }
-            );
-          }
-
-          const data = await response.json();
-          allModels.push(...parseGeminiModelsList(data));
-
-          const nextPageToken = data.nextPageToken;
-          if (!nextPageToken || seenTokens.has(nextPageToken)) break;
-          seenTokens.add(nextPageToken);
-          pageUrl = `${baseUrl}&pageToken=${encodeURIComponent(nextPageToken)}`;
-          if (queryKey) pageUrl += `&key=${encodeURIComponent(queryKey)}`;
-        }
-      } catch (error) {
-        const fallback = buildDiscoveryErrorFallbackResponse(error);
-        if (fallback) return fallback;
-        throw error;
+      if (discovery.models.length > 0) {
+        return buildApiDiscoveryResponse(discovery.models, discovery.warning);
       }
 
-      // Anthropic partner models via Model Garden publisher endpoint (Bearer only).
-      //
-      // Model Garden's publisher-model LIST is served by the v1beta1 API — the v1
-      // API does not support list operations (every /v1/.../publishers/anthropic/models
-      // path 404s at the Google Front End). The list is also global: it returns the
-      // full Anthropic Claude catalog regardless of the connection's project or
-      // region, so no project/region scoping is applied here (execution region is
-      // handled separately by the vertex executor at request time).
-      if (bearerToken) {
-        const anthropicModelsUrl =
-          "https://aiplatform.googleapis.com/v1beta1/publishers/anthropic/models";
-
-        try {
-          const anthropicResponse = await safeOutboundFetch(anthropicModelsUrl, {
-            ...SAFE_OUTBOUND_FETCH_PRESETS.modelsDiscovery,
-            guard: getProviderOutboundGuard(),
-            proxyConfig: proxy,
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${bearerToken}`,
-            },
-          });
-          if (anthropicResponse.ok) {
-            const anthropicData = await anthropicResponse.json();
-            const { parseVertexAnthropicModels } =
-              await import("@/lib/providerModels/vertexAnthropicModelsParser");
-            allModels.push(...parseVertexAnthropicModels(anthropicData));
-          } else {
-            console.log("[models] Vertex Anthropic partner discovery failed", {
-              provider,
-              status: anthropicResponse.status,
-            });
-          }
-        } catch (err) {
-          console.log("[models] Vertex Anthropic partner discovery error", {
-            provider,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-
-      if (allModels.length > 0) {
-        return buildApiDiscoveryResponse(allModels);
-      }
-
-      const fallback = buildDiscoveryFallbackResponse();
+      const fallback = buildDiscoveryFallbackResponse({
+        cacheWarning: "Vertex model catalogs unavailable — using cached catalog",
+        localWarning: "Vertex model catalogs unavailable — using local catalog",
+      });
       if (fallback) return fallback;
       return buildResponse({
         provider,
