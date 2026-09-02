@@ -23,6 +23,7 @@ async function resetStorage(): Promise<void> {
 async function seedVertexConnection(options: {
   apiKey?: string;
   accessToken?: string;
+  projectId?: string;
 }): Promise<{ id: string }> {
   return providersDb.createProviderConnection({
     provider: "vertex",
@@ -30,6 +31,7 @@ async function seedVertexConnection(options: {
     name: `vertex-${Math.random().toString(16).slice(2, 8)}`,
     apiKey: options.apiKey,
     accessToken: options.accessToken,
+    projectId: options.projectId,
     isActive: true,
     testStatus: "active",
     providerSpecificData: { autoFetchModels: true },
@@ -53,7 +55,7 @@ test.after(async () => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-test("Vertex Express prefers live discovery and then uses the intentional Gemini catalog", async () => {
+test("Vertex Express probes only Gemini discovery and then uses the intentional Gemini catalog", async () => {
   const connection = await seedVertexConnection({ apiKey: "vertex-express-key" });
   let fetchCalls = 0;
   const headers: HeadersInit[] = [];
@@ -70,7 +72,7 @@ test("Vertex Express prefers live discovery and then uses the intentional Gemini
   assert.equal(body.source, "local_catalog");
   assert.equal(body.intentional, true);
   assert.match(body.warning, /live catalog.*API key.*curated Express catalog/i);
-  assert.ok(fetchCalls > 0);
+  assert.equal(fetchCalls, 1);
   assert.ok(
     headers.every((header) => new Headers(header).get("x-goog-api-key") === "vertex-express-key")
   );
@@ -78,27 +80,28 @@ test("Vertex Express prefers live discovery and then uses the intentional Gemini
   assert.ok(!body.models.some((model: { id?: string }) => model.id.includes("grok")));
 });
 
-test("Vertex authorization API key imports live partner catalogs before fallback", async () => {
+test("Vertex authorization API key detects and persists its project for curated partner models", async () => {
   const connection = await seedVertexConnection({ apiKey: "vertex-authorization-key" });
   const calledUrls: string[] = [];
   globalThis.fetch = async (url, init) => {
     const calledUrl = String(url);
     calledUrls.push(calledUrl);
     assert.equal(new Headers(init?.headers).get("x-goog-api-key"), "vertex-authorization-key");
-    if (calledUrl.includes("generativelanguage.googleapis.com")) {
-      return Response.json({ error: { status: "PERMISSION_DENIED" } }, { status: 403 });
-    }
-    if (calledUrl.includes("/publishers/xai/models")) {
-      return Response.json({
-        publisherModels: [{ name: "publishers/xai/models/grok-4.6" }],
-      });
-    }
-    if (calledUrl.includes("/publishers/mistralai/models")) {
-      return Response.json({
-        publisherModels: [{ name: "publishers/mistralai/models/mistral-medium-3" }],
-      });
-    }
-    return Response.json({ publisherModels: [] });
+    return Response.json(
+      {
+        error: {
+          status: "PERMISSION_DENIED",
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+              reason: "API_KEY_SERVICE_BLOCKED",
+              metadata: { consumer: "projects/316081256616" },
+            },
+          ],
+        },
+      },
+      { status: 403 }
+    );
   };
 
   const response = await callRoute(connection.id);
@@ -108,11 +111,17 @@ test("Vertex authorization API key imports live partner catalogs before fallback
   );
 
   assert.equal(response.status, 200);
-  assert.equal(body.source, "api");
+  assert.equal(body.source, "local_catalog");
+  assert.equal(body.intentional, true);
+  assert.equal(body.projectIdAutoDetected, true);
+  assert.match(body.warning, /curated project-scoped catalog/i);
   assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");
-  assert.equal(byId.get("mistral-medium-3")?.targetFormat, "openai");
-  assert.ok(calledUrls.some((url) => url.includes("/publishers/xai/models")));
-  assert.ok(calledUrls.some((url) => url.includes("/publishers/mistralai/models")));
+  assert.equal(calledUrls.length, 1);
+  assert.ok(calledUrls[0].includes("generativelanguage.googleapis.com"));
+  assert.ok(!calledUrls[0].includes("vertex-authorization-key"));
+
+  const saved = await providersDb.getProviderConnectionById(connection.id);
+  assert.equal(saved?.projectId, "316081256616");
 });
 
 test("Vertex Service Account discovery merges Gemini and all partner transport catalogs", async () => {

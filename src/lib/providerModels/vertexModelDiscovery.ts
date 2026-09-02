@@ -26,6 +26,7 @@ export type VertexModelDiscoveryFetch = (url: string, init: RequestInit) => Prom
 export interface VertexModelDiscoveryResult {
   models: unknown[];
   warning?: string;
+  projectId?: string;
 }
 
 interface DiscoveryAuth {
@@ -36,6 +37,26 @@ function readNextPageToken(data: unknown): string | null {
   if (!data || typeof data !== "object" || !("nextPageToken" in data)) return null;
   const token = (data as { nextPageToken?: unknown }).nextPageToken;
   return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+function readApiKeyConsumerProjectId(data: unknown): string | null {
+  if (!data || typeof data !== "object" || !("error" in data)) return null;
+  const error = (data as { error?: unknown }).error;
+  if (!error || typeof error !== "object" || !("details" in error)) return null;
+  const details = (error as { details?: unknown }).details;
+  if (!Array.isArray(details)) return null;
+
+  for (const detail of details) {
+    if (!detail || typeof detail !== "object" || !("metadata" in detail)) continue;
+    const metadata = (detail as { metadata?: unknown }).metadata;
+    if (!metadata || typeof metadata !== "object" || !("consumer" in metadata)) continue;
+    const consumer = (metadata as { consumer?: unknown }).consumer;
+    if (typeof consumer !== "string") continue;
+    const match = consumer.match(/^projects\/([^/]+)$/);
+    if (match?.[1]) return match[1];
+  }
+
+  return null;
 }
 
 async function discoverVertexModels(options: {
@@ -131,22 +152,55 @@ export function discoverVertexModelsWithBearer(options: {
 }
 
 /**
- * Prefer live discovery for API keys. A standard Express key will normally receive an auth error
- * from Model Garden and fall back to the curated Express catalog; a service-account-bound
- * Authorization Key can return the same publisher catalogs as a Bearer credential.
+ * Discover the Gemini catalog exposed to an API key and recover its Google Cloud consumer project
+ * from structured error metadata when API restrictions block models.list. Vertex Model Garden's
+ * publishers.models.list rejects API-key authentication even when the same key is authorized for
+ * project-scoped partner inference, so publisher discovery is deliberately Bearer-only.
  */
-export function discoverVertexModelsWithApiKey(options: {
+export async function discoverVertexModelsWithApiKey(options: {
   apiKey: string;
   fetchImpl: VertexModelDiscoveryFetch;
 }): Promise<VertexModelDiscoveryResult> {
-  return discoverVertexModels({
-    auth: {
-      // Keep the secret out of URLs and any URL-bearing error/log path.
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": options.apiKey,
-      },
-    },
-    fetchImpl: options.fetchImpl,
-  });
+  const models: unknown[] = [];
+  const headers = {
+    "Content-Type": "application/json",
+    // Keep the secret out of URLs and any URL-bearing error/log path.
+    "x-goog-api-key": options.apiKey,
+  };
+  let pageUrl = GOOGLE_MODELS_URL;
+  let pageCount = 0;
+  const seenTokens = new Set<string>();
+
+  try {
+    while (pageUrl && pageCount < MAX_CATALOG_PAGES) {
+      pageCount += 1;
+      const response = await options.fetchImpl(pageUrl, { method: "GET", headers });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        const projectId = readApiKeyConsumerProjectId(data);
+        return {
+          models,
+          ...(projectId ? { projectId } : {}),
+          ...(models.length > 0
+            ? { warning: "Some Vertex Gemini catalog pages were unavailable" }
+            : {}),
+        };
+      }
+
+      models.push(...parseGeminiModelsList(data));
+      const nextPageToken = readNextPageToken(data);
+      if (!nextPageToken || seenTokens.has(nextPageToken)) break;
+      seenTokens.add(nextPageToken);
+      pageUrl = `${GOOGLE_MODELS_URL}&pageToken=${encodeURIComponent(nextPageToken)}`;
+    }
+  } catch {
+    return {
+      models,
+      ...(models.length > 0
+        ? { warning: "Some Vertex Gemini catalog pages were unavailable" }
+        : {}),
+    };
+  }
+
+  return { models };
 }

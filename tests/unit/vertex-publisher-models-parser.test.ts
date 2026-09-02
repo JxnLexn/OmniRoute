@@ -74,7 +74,7 @@ test("generic Vertex publisher parser accepts models and publisherModels envelop
   );
 });
 
-test("Vertex publisher discovery follows pagination and keeps the API key out of URLs", async () => {
+test("Vertex API-key discovery extracts its consumer project without probing Model Garden", async () => {
   const urls: string[] = [];
   const result = await discoverVertexModelsWithApiKey({
     apiKey: "authorization-key",
@@ -83,27 +83,25 @@ test("Vertex publisher discovery follows pagination and keeps the API key out of
       assert.equal(new Headers(init.headers).get("x-goog-api-key"), "authorization-key");
       assert.ok(!url.includes("authorization-key"));
 
-      if (url.includes("generativelanguage.googleapis.com")) {
-        return Response.json({ models: [] });
-      }
-      if (url.includes("/publishers/xai/models") && !url.includes("pageToken=")) {
-        return Response.json({
-          publisherModels: [{ name: "publishers/xai/models/grok-4.6" }],
-          nextPageToken: "next-xai",
-        });
-      }
-      if (url.includes("/publishers/xai/models") && url.includes("pageToken=next-xai")) {
-        return Response.json({
-          publisherModels: [{ name: "publishers/xai/models/grok-4.3" }],
-        });
-      }
-      return Response.json({ publisherModels: [] });
+      return Response.json(
+        {
+          error: {
+            details: [
+              {
+                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                metadata: { consumer: "projects/project-from-key" },
+              },
+            ],
+          },
+        },
+        { status: 403 }
+      );
     },
   });
 
-  assert.deepEqual(result.models.map((model) => (model as { id: string }).id).sort(), [
-    "xai/grok-4.3",
-    "xai/grok-4.6",
-  ]);
-  assert.ok(urls.some((url) => url.includes("pageToken=next-xai")));
+  assert.deepEqual(result.models, []);
+  assert.equal(result.projectId, "project-from-key");
+  assert.equal(urls.length, 1);
+  assert.ok(urls[0].includes("generativelanguage.googleapis.com"));
+  assert.ok(!urls[0].includes("/publishers/"));
 });
