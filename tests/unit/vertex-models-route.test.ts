@@ -148,6 +148,14 @@ test("Vertex Service Account discovery merges Gemini and all partner transport c
         ],
       });
     }
+    if (calledUrl.includes("/publishers/google/models")) {
+      return Response.json({
+        publisherModels: [
+          { name: "publishers/google/models/gemini-3.7-flash" },
+          { name: "publishers/google/models/gemini-3.1-flash-image" },
+        ],
+      });
+    }
     if (calledUrl.includes("/publishers/anthropic/models")) {
       return Response.json({
         publisherModels: [{ name: "publishers/anthropic/models/claude-sonnet-4-6" }],
@@ -175,10 +183,13 @@ test("Vertex Service Account discovery merges Gemini and all partner transport c
   assert.equal(response.status, 200);
   assert.equal(body.source, "api");
   assert.ok(byId.has("gemini-3.1-pro-preview"));
+  assert.ok(byId.has("gemini-3.7-flash"));
+  assert.ok(!byId.has("gemini-3.1-flash-image"));
   assert.equal(byId.get("claude-sonnet-4-6")?.targetFormat, "claude");
   assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");
   assert.equal(byId.get("mistral-medium-3")?.targetFormat, "openai");
   assert.ok(calledUrls.some((url) => url.includes("/v1beta1/publishers/xai/models")));
+  assert.ok(calledUrls.some((url) => url.includes("/v1beta1/publishers/google/models")));
   assert.ok(
     calledUrls
       .filter((url) => url.includes("/v1beta1/publishers/"))
@@ -207,6 +218,6 @@ test("Vertex Service Account keeps usable xAI results when Gemini listing is blo
   assert.equal(response.status, 200);
   assert.equal(body.source, "api");
   assert.ok(body.models.some((model: { id?: string }) => model.id === "xai/grok-4.6"));
-  assert.equal(body.catalogMode, "live_publishers_curated_google");
+  assert.equal(body.catalogMode, "live_vertex_catalog");
   assert.equal(body.warning, undefined);
 });

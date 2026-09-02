@@ -10,6 +10,7 @@ const MAX_CATALOG_PAGES = 20;
  * remain publisher-generic, so newly returned model versions need no source change.
  */
 export const VERTEX_MODEL_GARDEN_PUBLISHERS = [
+  "google",
   "anthropic",
   "xai",
   "mistralai",

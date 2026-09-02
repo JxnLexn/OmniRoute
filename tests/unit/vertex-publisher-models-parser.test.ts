@@ -102,6 +102,28 @@ test("generic Vertex publisher parser accepts models and publisherModels envelop
   );
 });
 
+test("Google publisher discovery keeps current Gemini chat models and filters media or retired IDs", () => {
+  const models = parseVertexPublisherModels(
+    {
+      publisherModels: [
+        { name: "publishers/google/models/gemini-3.7-flash" },
+        { name: "publishers/google/models/gemini-3.8-flash" },
+        { name: "publishers/google/models/gemini-3.1-pro-preview" },
+        { name: "publishers/google/models/gemini-3.1-flash-image" },
+        { name: "publishers/google/models/gemini-2.5-pro-tts" },
+        { name: "publishers/google/models/gemini-1.5-pro-002" },
+      ],
+    },
+    "google"
+  );
+
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.1-pro-preview"]
+  );
+  assert.ok(models.every((model) => model.targetFormat === undefined));
+});
+
 test("Vertex API-key discovery extracts its consumer project without probing Model Garden", async () => {
   const urls: string[] = [];
   const result = await discoverVertexModelsWithApiKey({
