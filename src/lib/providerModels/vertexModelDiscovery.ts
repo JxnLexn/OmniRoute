@@ -35,29 +35,30 @@ interface DiscoveryAuth {
   headers: Record<string, string>;
 }
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function readNextPageToken(data: unknown): string | null {
-  if (!data || typeof data !== "object" || !("nextPageToken" in data)) return null;
-  const token = (data as { nextPageToken?: unknown }).nextPageToken;
+  const token = asObject(data)?.nextPageToken;
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
+function readConsumerProjectId(consumer: unknown): string | null {
+  if (typeof consumer !== "string") return null;
+  const match = consumer.match(/^projects\/([^/]+)$/);
+  return match?.[1] ?? null;
+}
+
 function readApiKeyConsumerProjectId(data: unknown): string | null {
-  if (!data || typeof data !== "object" || !("error" in data)) return null;
-  const error = (data as { error?: unknown }).error;
-  if (!error || typeof error !== "object" || !("details" in error)) return null;
-  const details = (error as { details?: unknown }).details;
+  const details = asObject(asObject(data)?.error)?.details;
   if (!Array.isArray(details)) return null;
-
   for (const detail of details) {
-    if (!detail || typeof detail !== "object" || !("metadata" in detail)) continue;
-    const metadata = (detail as { metadata?: unknown }).metadata;
-    if (!metadata || typeof metadata !== "object" || !("consumer" in metadata)) continue;
-    const consumer = (metadata as { consumer?: unknown }).consumer;
-    if (typeof consumer !== "string") continue;
-    const match = consumer.match(/^projects\/([^/]+)$/);
-    if (match?.[1]) return match[1];
+    const projectId = readConsumerProjectId(asObject(asObject(detail)?.metadata)?.consumer);
+    if (projectId) return projectId;
   }
-
   return null;
 }
 

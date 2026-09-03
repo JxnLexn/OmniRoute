@@ -13,7 +13,6 @@ import { providerUsesCuratedModelsOnly } from "@/lib/providers/modelListingCapab
 import { mergeModelsWithCustomPrecedence } from "@/lib/providers/modelMetadataPrecedence";
 import { getCachedProviderConnectionById } from "@/lib/db/readCache";
 import { resolveProxyForProvider } from "@/lib/db/proxies";
-import { updateProviderConnection } from "@/lib/db/providers";
 import {
   SAFE_OUTBOUND_FETCH_PRESETS,
   SafeOutboundFetchError,
@@ -126,6 +125,7 @@ import {
   fetchCodexGithubCatalogModels,
 } from "./discovery/codex";
 import { maybeHandleConolModelDiscovery } from "./conolDiscovery";
+import { maybeHandleVertexModelDiscovery } from "./vertexDiscovery";
 import { buildNoAuthModelsResponse, filterModelsForRoute } from "./modelRouteProjection";
 
 /**
@@ -1787,181 +1787,21 @@ export async function GET(
       });
     }
 
-    if (provider === "vertex" || provider === "vertex-partner") {
-      const cachedResponse = maybeReturnCachedDiscovery();
-      if (cachedResponse) return cachedResponse;
-
-      const autoFetchDisabledResponse = maybeReturnAutoFetchDisabled();
-      if (autoFetchDisabledResponse) return autoFetchDisabledResponse;
-
-      // Service Accounts combine the Generative Language Gemini list with Vertex Model Garden
-      // publisher lists. Express API keys can execute models but cannot authenticate to the
-      // Model Garden LIST API, so that credential mode uses the curated catalog below.
-      const credential = (apiKey || "").trim();
-      let queryKey: string | null = null;
-      let bearerToken: string | null = null;
-      try {
-        const { parseSAFromApiKey, getAccessToken } =
-          await import("@omniroute/open-sse/executors/vertex.ts");
-        if (accessToken) {
-          bearerToken = accessToken;
-        } else if (credential) {
-          // A Service Account credential is a JSON object; a Vertex AI Express-mode API key is an
-          // opaque (non-JSON) string. Detect locally so this branch has no dependency on optional
-          // executor helpers.
-          let isServiceAccountJson = false;
-          try {
-            const parsed = JSON.parse(credential);
-            isServiceAccountJson = !!parsed && typeof parsed === "object" && !Array.isArray(parsed);
-          } catch {
-            isServiceAccountJson = false;
-          }
-
-          if (isServiceAccountJson) {
-            bearerToken = await getAccessToken(parseSAFromApiKey(credential));
-          } else {
-            queryKey = credential;
-          }
-        }
-      } catch (error) {
-        // Couldn't resolve a usable credential (e.g. malformed Service Account JSON).
-        const fallback = buildDiscoveryErrorFallbackResponse(error, {
-          cacheWarning: "Vertex credential unavailable — using cached catalog",
-          localWarning: "Vertex credential unavailable — using local catalog",
-        });
-        if (fallback) return fallback;
-      }
-
-      if (!queryKey && !bearerToken) {
-        const fallback = buildDiscoveryFallbackResponse({
-          cacheWarning: "No usable Vertex credential — using cached catalog",
-          localWarning: "No usable Vertex credential — using local catalog",
-        });
-        if (fallback) return fallback;
-        return NextResponse.json(
-          { error: "No usable Vertex AI credential configured for model discovery." },
-          { status: 400 }
-        );
-      }
-
-      const curatedVertexCatalog = mergeLocalCatalogModels(
-        getModelsByProviderId(provider) || [],
-        getStaticModelsForProvider(provider) || []
-      ).map((model) => ({
-        ...model,
-        name: model.name || model.id,
-        owned_by: provider,
-      }));
-
-      if (queryKey) {
-        // API keys can execute project-scoped partner models, but Google rejects API-key auth for
-        // Model Garden's publishers.models.list. The Gemini models.list error still carries the
-        // bound consumer project, which lets us persist the missing project association and expose
-        // the full curated partner catalog without asking the operator to duplicate that metadata.
-        const { discoverVertexModelsWithApiKey } =
-          await import("@/lib/providerModels/vertexModelDiscovery");
-        const discovery = await discoverVertexModelsWithApiKey({
-          apiKey: queryKey,
-          fetchImpl: (url, init) =>
-            safeOutboundFetch(url, {
-              ...SAFE_OUTBOUND_FETCH_PRESETS.modelsPagination,
-              guard: getProviderOutboundGuard(),
-              proxyConfig: proxy,
-              ...init,
-            }),
-        });
-
-        const providerData = asRecord(connection.providerSpecificData);
-        const configuredProjectId =
-          toNonEmptyString(connection.projectId) ||
-          toNonEmptyString(providerData.projectId) ||
-          toNonEmptyString(providerData.project);
-        const projectId = configuredProjectId || discovery.projectId || null;
-        const projectIdAutoDetected = !configuredProjectId && !!discovery.projectId;
-        if (projectIdAutoDetected && projectId) {
-          await updateProviderConnection(connectionId, { projectId });
-        }
-
-        const { isVertexExpressModel } = await import("@omniroute/open-sse/config/vertexModels.ts");
-        if (projectId) {
-          const liveGeminiModels = discovery.models.flatMap((model) =>
-            model && typeof model === "object" && "id" in model && typeof model.id === "string"
-              ? [model as { id: string; name?: string }]
-              : []
-          );
-          const projectCatalog = mergeLocalCatalogModels(liveGeminiModels, curatedVertexCatalog);
-
-          if (liveGeminiModels.length > 0) {
-            return buildApiDiscoveryResponse(projectCatalog, undefined, {
-              projectIdAutoDetected,
-              catalogMode: "live_gemini_curated_project",
-            });
-          }
-
-          return buildResponse({
-            provider,
-            connectionId,
-            models: projectCatalog,
-            source: "local_catalog",
-            intentional: true,
-            projectIdAutoDetected,
-            catalogMode: "curated_project",
-          });
-        }
-
-        if (discovery.models.length > 0) {
-          return buildApiDiscoveryResponse(discovery.models, discovery.warning);
-        }
-
-        const expressCatalog = curatedVertexCatalog.filter((model) =>
-          isVertexExpressModel(model.id)
-        );
-        return buildResponse({
-          provider,
-          connectionId,
-          models: expressCatalog,
-          source: "local_catalog",
-          intentional: true,
-          warning: "No live catalog available for this API key — using curated Express catalog",
-        });
-      }
-
-      const { discoverVertexModelsWithBearer } =
-        await import("@/lib/providerModels/vertexModelDiscovery");
-      const discovery = await discoverVertexModelsWithBearer({
-        bearerToken,
-        fetchImpl: (url, init) =>
-          safeOutboundFetch(url, {
-            ...SAFE_OUTBOUND_FETCH_PRESETS.modelsPagination,
-            guard: getProviderOutboundGuard(),
-            proxyConfig: proxy,
-            ...init,
-          }),
-      });
-
-      if (discovery.models.length > 0) {
-        const liveModels = discovery.models.flatMap((model) =>
-          model && typeof model === "object" && "id" in model && typeof model.id === "string"
-            ? [model as { id: string; name?: string }]
-            : []
-        );
-        return buildApiDiscoveryResponse(liveModels, discovery.warning, {
-          catalogMode: "live_vertex_catalog",
-        });
-      }
-
-      const fallback = buildDiscoveryFallbackResponse({
-        cacheWarning: "Vertex model catalogs unavailable — using cached catalog",
-        localWarning: "Vertex model catalogs unavailable — using local catalog",
-      });
-      if (fallback) return fallback;
-      return buildResponse({
-        provider,
-        connectionId,
-        models: [],
-        source: "api",
-      });
-    }
+    const vertexResponse = await maybeHandleVertexModelDiscovery({
+      provider,
+      connectionId,
+      connection,
+      apiKey,
+      accessToken,
+      proxy,
+      maybeReturnCachedDiscovery,
+      maybeReturnAutoFetchDisabled,
+      buildDiscoveryFallbackResponse,
+      buildDiscoveryErrorFallbackResponse,
+      buildResponse,
+      buildApiDiscoveryResponse,
+    });
+    if (vertexResponse) return vertexResponse;
 
     if (isAnthropicCompatibleProvider(provider)) {
       // CC providers never support models listing — this check must precede

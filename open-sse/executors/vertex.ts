@@ -140,6 +140,84 @@ function isMistralModel(model: string) {
   return getVertexModelTransport(model) === "mistral";
 }
 
+interface VertexUrlCredentials {
+  apiKey?: string | null;
+  accessToken?: string | null;
+  projectId?: string;
+  providerSpecificData?: {
+    projectId?: string;
+    project?: string;
+    region?: string;
+  };
+}
+
+function configuredVertexProjectId(credentials?: VertexUrlCredentials | null): string | undefined {
+  return (
+    credentials?.projectId ||
+    credentials?.providerSpecificData?.projectId ||
+    credentials?.providerSpecificData?.project
+  );
+}
+
+function projectIdFromServiceAccount(
+  credentials?: VertexUrlCredentials | null
+): string | undefined {
+  if (!credentials?.apiKey) return undefined;
+  try {
+    const sa = parseSAFromApiKey(credentials.apiKey);
+    if (sa.project_id) return sa.project_id;
+  } catch {
+    // Ignored, handled in execute
+  }
+  return undefined;
+}
+
+function encodeOpaqueApiKey(credentials?: VertexUrlCredentials | null): string | null {
+  if (!isExpressApiKey(credentials?.apiKey) || credentials?.accessToken) return null;
+  return encodeURIComponent(String(credentials.apiKey).trim());
+}
+
+function buildExpressGeminiUrl(
+  canonicalModel: string,
+  stream: boolean,
+  expressKey: string
+): string {
+  if (getVertexModelTransport(canonicalModel) !== "gemini") {
+    throw new Error(
+      "Vertex partner models require project-scoped credentials; Express API keys support Gemini models only"
+    );
+  }
+  const op = stream ? "streamGenerateContent?alt=sse&" : "generateContent?";
+  return `https://aiplatform.googleapis.com/v1/publishers/google/models/${canonicalModel}:${op}key=${expressKey}`;
+}
+
+function buildProjectScopedVertexUrl(
+  canonicalModel: string,
+  stream: boolean,
+  project: string,
+  region: string,
+  opaqueApiKey: string | null
+): string {
+  const apiKeySuffix = opaqueApiKey ? `?key=${opaqueApiKey}` : "";
+  if (isClaudeModel(canonicalModel)) {
+    // streamRawPredict?alt=sse was verified to return a single plain JSON body (not real SSE
+    // framing) rather than actual chunked events, which breaks the SSE parser upstream
+    // ("stream ended before producing a non-ping SSE event"). rawPredict is confirmed reliable
+    // for both streaming and non-streaming requests; always use it here.
+    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/anthropic/models/${canonicalModel}:rawPredict${apiKeySuffix}`;
+  }
+  if (isMistralModel(canonicalModel)) {
+    const operation = stream ? "streamRawPredict" : "rawPredict";
+    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/mistralai/models/${canonicalModel}:${operation}${apiKeySuffix}`;
+  }
+  if (isPartnerModel(canonicalModel)) {
+    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions${apiKeySuffix}`;
+  }
+  const operation = stream ? "streamGenerateContent?alt=sse" : "generateContent";
+  const querySeparator = opaqueApiKey ? (stream ? "&" : "?") : "";
+  return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models/${canonicalModel}:${operation}${querySeparator}${opaqueApiKey ? `key=${opaqueApiKey}` : ""}`;
+}
+
 // Defensive normalizer: target-format resolution for manually-added custom Claude models under
 // "vertex"/"vertex-partner" was observed sending a Gemini-shaped body (contents/parts) to the
 // Anthropic rawPredict endpoint instead of the configured "claude" format, causing a hard
@@ -369,59 +447,18 @@ export class VertexExecutor extends BaseExecutor {
 
   buildUrl(model: string, stream: boolean, urlIndex = 0, credentials: any = null) {
     const canonicalModel = normalizeVertexModelId(model);
-    const configuredProject =
-      credentials?.projectId ||
-      credentials?.providerSpecificData?.projectId ||
-      credentials?.providerSpecificData?.project;
+    const configuredProject = configuredVertexProjectId(credentials);
+    const opaqueApiKey = encodeOpaqueApiKey(credentials);
     // Vertex AI Express mode: project-less v1 publisher endpoint with the API key passed as a
     // ?key= query parameter. Express currently exposes Gemini models only; opaque Authorization
     // Keys can use project-scoped APIs when a projectId is configured on the connection.
-    if (isExpressApiKey(credentials?.apiKey) && !credentials?.accessToken && !configuredProject) {
-      const expressKey = encodeURIComponent(String(credentials.apiKey).trim());
-      if (getVertexModelTransport(canonicalModel) !== "gemini") {
-        throw new Error(
-          "Vertex partner models require project-scoped credentials; Express API keys support Gemini models only"
-        );
-      }
-      const op = stream ? "streamGenerateContent?alt=sse&" : "generateContent?";
-      return `https://aiplatform.googleapis.com/v1/publishers/google/models/${canonicalModel}:${op}key=${expressKey}`;
+    if (opaqueApiKey && !configuredProject) {
+      return buildExpressGeminiUrl(canonicalModel, stream, opaqueApiKey);
     }
-
+    const project =
+      projectIdFromServiceAccount(credentials) || configuredProject || "unknown-project";
     const region = credentials?.providerSpecificData?.region || "us-central1";
-    let project = configuredProject || "unknown-project";
-
-    if (credentials?.apiKey) {
-      try {
-        const sa = parseSAFromApiKey(credentials.apiKey);
-        if (sa.project_id) project = sa.project_id;
-      } catch {
-        // Ignored, handled in execute
-      }
-    }
-
-    const opaqueApiKey =
-      isExpressApiKey(credentials?.apiKey) && !credentials?.accessToken
-        ? encodeURIComponent(String(credentials.apiKey).trim())
-        : null;
-    const apiKeySuffix = opaqueApiKey ? `?key=${opaqueApiKey}` : "";
-
-    if (isClaudeModel(canonicalModel)) {
-      // streamRawPredict?alt=sse was verified to return a single plain JSON body (not real SSE
-      // framing) rather than actual chunked events, which breaks the SSE parser upstream
-      // ("stream ended before producing a non-ping SSE event"). rawPredict is confirmed reliable
-      // for both streaming and non-streaming requests; always use it here.
-      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/anthropic/models/${canonicalModel}:rawPredict${apiKeySuffix}`;
-    }
-    if (isMistralModel(canonicalModel)) {
-      const operation = stream ? "streamRawPredict" : "rawPredict";
-      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/mistralai/models/${canonicalModel}:${operation}${apiKeySuffix}`;
-    }
-    if (isPartnerModel(canonicalModel)) {
-      return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/endpoints/openapi/chat/completions${apiKeySuffix}`;
-    }
-    const operation = stream ? "streamGenerateContent?alt=sse" : "generateContent";
-    const querySeparator = opaqueApiKey ? (stream ? "&" : "?") : "";
-    return `https://aiplatform.googleapis.com/v1/projects/${project}/locations/${region}/publishers/google/models/${canonicalModel}:${operation}${querySeparator}${opaqueApiKey ? `key=${opaqueApiKey}` : ""}`;
+    return buildProjectScopedVertexUrl(canonicalModel, stream, project, region, opaqueApiKey);
   }
 
   buildHeaders(credentials: any, stream = true) {

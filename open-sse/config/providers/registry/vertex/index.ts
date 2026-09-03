@@ -30,7 +30,6 @@ export const vertexProvider: RegistryEntry = {
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Vertex)" },
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Vertex)" },
     { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite (Vertex)" },
-    { id: "gemma-4-31b-it", name: "Gemma 4 31B (Vertex)" },
     {
       id: "deepseek-ai/deepseek-v3.2-maas",
       name: "DeepSeek V3.2 (Vertex MaaS)",
@@ -47,10 +46,6 @@ export const vertexProvider: RegistryEntry = {
       targetFormat: "openai",
     },
     { id: "zai-org/glm-5-maas", name: "GLM 5 (Vertex MaaS)", targetFormat: "openai" },
-    { id: "DeepSeek-V4-Flash", name: "DeepSeek V4 Flash (Vertex Partner)" },
-    { id: "DeepSeek-V4-Pro", name: "DeepSeek V4 Pro (Vertex Partner)" },
-    { id: "Qwen3.6-35B-A3B", name: "Qwen3.6 35B A3B (Vertex Partner)" },
-    { id: "GLM-5.1-FP8", name: "GLM-5.1 (Vertex Partner)" },
     ...VERTEX_XAI_MODELS,
     { id: "claude-fable-5-1", name: "Claude Fable 5.1 (Vertex)", targetFormat: "claude" },
     { id: "claude-fable-5", name: "Claude Fable 5 (Vertex)", targetFormat: "claude" },
