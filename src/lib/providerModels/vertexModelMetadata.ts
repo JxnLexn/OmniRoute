@@ -1,5 +1,3 @@
-import { JSDOM } from "jsdom";
-
 const VERTEX_DOCS_BASE = "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models";
 const VERTEX_DOCS_PARSER_VERSION = "vertex-docs-v1";
 const FRESH_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -48,7 +46,7 @@ interface ParsedDocsMetadata {
 
 interface CachedDocsPage {
   fetchedAtMs: number;
-  html: string;
+  rows: string[][];
   sourceUrl: string;
   lastModified?: string;
 }
@@ -123,39 +121,77 @@ function modelIdAppearsInRow(rowText: string, modelId: string): boolean {
   return new RegExp(`(?:^|[^a-z0-9._/-])${escaped}(?:$|[^a-z0-9._/-])`, "i").test(rowText);
 }
 
+function decodeHtmlEntities(value: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+
+  return value.replace(/&(#(?:x[0-9a-f]+|\d+)|[a-z]+);/gi, (entity, token: string) => {
+    if (token.startsWith("#")) {
+      const hexadecimal = token[1]?.toLowerCase() === "x";
+      const parsed = Number.parseInt(token.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+      if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 0x10ffff) {
+        return String.fromCodePoint(parsed);
+      }
+      return entity;
+    }
+    return namedEntities[token.toLowerCase()] ?? entity;
+  });
+}
+
+function htmlFragmentToText(fragment: string): string {
+  return decodeHtmlEntities(
+    fragment
+      .replace(/<(?:script|style)\b[^>]*>[\s\S]*?<\/(?:script|style)\s*>/gi, " ")
+      .replace(/<(?:br|hr)\b[^>]*\/?\s*>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
- * Parse token metadata only when an official semantic "Model ID" row contains the exact live id.
- * This prevents a family, navigation, or similar-model page from lending limits to another model.
+ * Extract only the table cells needed for metadata matching. Google Cloud model pages are around
+ * 400 KB each; constructing full JSDOM windows for the live catalog expanded those pages to
+ * hundreds of megabytes. Keeping compact row text avoids both that transient heap spike and
+ * retaining raw HTML in the 24-hour cache.
  */
-export function parseVertexModelDocsHtml(
-  html: string,
+function extractTableRows(html: string): string[][] {
+  const rows: string[][] = [];
+  const rowPattern = /<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi;
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowPattern.exec(html))) {
+    const cells: string[] = [];
+    const cellPattern = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi;
+    let cellMatch: RegExpExecArray | null;
+    while ((cellMatch = cellPattern.exec(rowMatch[1]))) {
+      cells.push(htmlFragmentToText(cellMatch[2]));
+    }
+    if (cells.length > 0) rows.push(cells);
+  }
+  return rows;
+}
+
+function parseVertexModelDocsRows(
+  rows: string[][],
   expectedModelId: string
 ): ParsedDocsMetadata | null {
-  const document = new JSDOM(html).window.document as unknown as Document;
-  const rows = Array.from(document.querySelectorAll("tr"));
   const bareId = terminalModelId(expectedModelId);
-  const hasExactModelId = rows.some((row) => {
-    const cells = Array.from(row.querySelectorAll("th,td"));
-    const label = cells[0]?.textContent?.replace(/\s+/g, " ").trim().toLowerCase();
-    const value = cells
-      .slice(1)
-      .map((cell) => cell.textContent || "")
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+  const hasExactModelId = rows.some((cells) => {
+    const label = cells[0]?.toLowerCase();
+    const value = cells.slice(1).join(" ");
     return label === "model id" && modelIdAppearsInRow(value, bareId);
   });
   if (!hasExactModelId) return null;
 
   const parsed: ParsedDocsMetadata = {};
-  for (const row of rows) {
-    const cells = Array.from(row.querySelectorAll("th,td"));
-    if (cells.length === 0) continue;
-    const text = cells
-      .map((cell) => cell.textContent || "")
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
+  for (const cells of rows) {
+    const text = cells.join(" ");
 
     const contextWindow =
       extractLabeledNumber(text, /context window/i) ??
@@ -174,6 +210,17 @@ export function parseVertexModelDocsHtml(
   }
 
   return Object.keys(parsed).length > 0 ? parsed : null;
+}
+
+/**
+ * Parse token metadata only when an official semantic "Model ID" row contains the exact live id.
+ * This prevents a family, navigation, or similar-model page from lending limits to another model.
+ */
+export function parseVertexModelDocsHtml(
+  html: string,
+  expectedModelId: string
+): ParsedDocsMetadata | null {
+  return parseVertexModelDocsRows(extractTableRows(html), expectedModelId);
 }
 
 function getCachedPage(url: string, nowMs: number, maxAgeMs: number): CachedDocsPage | null {
@@ -201,9 +248,10 @@ async function fetchDocsPage(options: {
       });
       if (!response.ok) return getCachedPage(url, nowMs, STALE_CACHE_TTL_MS);
 
+      const html = await response.text();
       const page: CachedDocsPage = {
         fetchedAtMs: nowMs,
-        html: await response.text(),
+        rows: extractTableRows(html),
         sourceUrl: url,
         ...(response.headers.get("last-modified")
           ? { lastModified: response.headers.get("last-modified")! }
@@ -293,7 +341,7 @@ export async function enrichVertexModelsWithMetadata<T extends VertexMetadataMod
         fetchImpl: options.fetchImpl,
         nowMs,
       });
-      docsMetadata = page ? parseVertexModelDocsHtml(page.html, expectedModelId) : null;
+      docsMetadata = page ? parseVertexModelDocsRows(page.rows, expectedModelId) : null;
       if (docsMetadata) break;
     }
 
