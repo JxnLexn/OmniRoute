@@ -35,6 +35,31 @@ interface DiscoveryAuth {
   headers: Record<string, string>;
 }
 
+function mergeDiscoveryModelsById(models: unknown[]): unknown[] {
+  const merged = new Map<string, Record<string, unknown>>();
+  const unkeyed: unknown[] = [];
+
+  for (const candidate of models) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      unkeyed.push(candidate);
+      continue;
+    }
+    const model = candidate as Record<string, unknown>;
+    const id = typeof model.id === "string" ? model.id : null;
+    if (!id) {
+      unkeyed.push(candidate);
+      continue;
+    }
+    const existing = merged.get(id);
+    // Earlier sources have higher precedence. The Generative Language API is queried before the
+    // publisher catalog, so its structured token limits survive while publisher transport fields
+    // fill gaps.
+    merged.set(id, existing ? { ...model, ...existing } : model);
+  }
+
+  return [...merged.values(), ...unkeyed];
+}
+
 function readNextPageToken(data: unknown): string | null {
   if (!data || typeof data !== "object" || !("nextPageToken" in data)) return null;
   const token = (data as { nextPageToken?: unknown }).nextPageToken;
@@ -130,7 +155,7 @@ async function discoverVertexModels(options: {
   for (const publisherModels of publisherResults) models.push(...publisherModels);
 
   return {
-    models,
+    models: mergeDiscoveryModelsById(models),
     ...(publisherFailureCount > 0 && models.length > 0
       ? { warning: "Some Vertex catalogs were unavailable — imported available models" }
       : {}),

@@ -1953,7 +1953,26 @@ export async function GET(
             ? [model as { id: string; name?: string }]
             : []
         );
-        return buildApiDiscoveryResponse(liveModels, discovery.warning, {
+        let enrichedLiveModels = liveModels;
+        try {
+          const { enrichVertexModelsWithMetadata } =
+            await import("@/lib/providerModels/vertexModelMetadata");
+          enrichedLiveModels = await enrichVertexModelsWithMetadata({
+            models: liveModels,
+            staleModels: cachedDiscoveryModels,
+            fetchImpl: (url, init) =>
+              safeOutboundFetch(url, {
+                ...SAFE_OUTBOUND_FETCH_PRESETS.modelsDiscovery,
+                guard: "public-only",
+                proxyConfig: proxy,
+                ...init,
+              }),
+          });
+        } catch {
+          // Metadata is an optional enrichment layer. A documentation or parser failure must never
+          // turn an authenticated live Vertex catalog into a failed model sync.
+        }
+        return buildApiDiscoveryResponse(enrichedLiveModels, discovery.warning, {
           catalogMode: "live_vertex_catalog",
         });
       }
