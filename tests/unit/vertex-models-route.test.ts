@@ -109,7 +109,6 @@ test("Vertex authorization API key detects and persists its project for curated 
   const byId = new Map(
     body.models.map((model: { id: string; targetFormat?: string }) => [model.id, model])
   );
-
   assert.equal(response.status, 200);
   assert.equal(body.source, "local_catalog");
   assert.equal(body.intentional, true);
@@ -145,8 +144,25 @@ test("Vertex Service Account discovery merges Gemini and all partner transport c
             displayName: "Gemini 3.1 Pro Preview",
             supportedGenerationMethods: ["generateContent"],
           },
+          {
+            name: "models/gemini-3.7-flash",
+            displayName: "Gemini 3.7 Flash",
+            supportedGenerationMethods: ["generateContent"],
+            inputTokenLimit: 900000,
+            outputTokenLimit: 60000,
+          },
         ],
       });
+    }
+    if (calledUrl.includes("/models/gemini/3-7-flash?hl=en")) {
+      return new Response(
+        `<table>
+          <tr><th>Model ID</th><td>gemini-3.7-flash</td></tr>
+          <tr><th>Token limits</th><td>Context window</td><td>1,048,576</td></tr>
+          <tr><th>Maximum output tokens</th><td>65,536</td></tr>
+        </table>`,
+        { headers: { "Last-Modified": "Thu, 03 Sep 2026 10:00:00 GMT" } }
+      );
     }
     if (calledUrl.includes("/publishers/google/models")) {
       return Response.json({
@@ -179,11 +195,23 @@ test("Vertex Service Account discovery merges Gemini and all partner transport c
   const byId = new Map(
     body.models.map((model: { id: string; targetFormat?: string }) => [model.id, model])
   );
+  const gemini37 = byId.get("gemini-3.7-flash") as
+    | {
+        contextWindow?: number;
+        inputTokenLimit?: number;
+        outputTokenLimit?: number;
+        metadataProvenance?: { vertexDocs?: { source?: string } };
+      }
+    | undefined;
 
   assert.equal(response.status, 200);
   assert.equal(body.source, "api");
   assert.ok(byId.has("gemini-3.1-pro-preview"));
   assert.ok(byId.has("gemini-3.7-flash"));
+  assert.equal(gemini37?.contextWindow, 1048576);
+  assert.equal(gemini37?.inputTokenLimit, 900000);
+  assert.equal(gemini37?.outputTokenLimit, 60000);
+  assert.equal(gemini37?.metadataProvenance?.vertexDocs?.source, "google-cloud-docs");
   assert.ok(!byId.has("gemini-3.1-flash-image"));
   assert.equal(byId.get("claude-sonnet-4-6")?.targetFormat, "claude");
   assert.equal(byId.get("xai/grok-4.6")?.targetFormat, "openai");

@@ -131,7 +131,7 @@ async function discoverVertexModels(options: {
   for (const publisherModels of publisherResults) models.push(...publisherModels);
 
   return {
-    models,
+    models: mergeDiscoveryModelsById(models),
     ...(publisherFailureCount > 0 && models.length > 0
       ? { warning: "Some Vertex catalogs were unavailable — imported available models" }
       : {}),
