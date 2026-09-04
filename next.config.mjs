@@ -291,6 +291,10 @@ const nextConfig = {
     "tls-client-node",
     "koffi",
     "tough-cookie",
+    // jsdom relies on Node class relationships that Turbopack's server-chunk transform can break
+    // (observed as "Class extends value undefined" during Vertex metadata sync). Keep the native
+    // package boundary; standalone file tracing still copies the runtime dependency.
+    "jsdom",
     "@ngrok/ngrok",
     "@huggingface/transformers",
     // copilot-m365-web.ts imports 'ws' as a client-side WebSocket. When bundled,
