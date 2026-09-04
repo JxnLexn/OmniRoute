@@ -4,6 +4,7 @@ import { getStaticModelsForProvider } from "@/lib/providers/staticModels";
 import { updateProviderConnection } from "@/lib/db/providers";
 import { SAFE_OUTBOUND_FETCH_PRESETS, safeOutboundFetch } from "@/shared/network/safeOutboundFetch";
 import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuardPolicy";
+import type { VertexMetadataModel } from "@/lib/providerModels/vertexModelMetadata";
 import { asRecord, mergeLocalCatalogModels, toNonEmptyString } from "./discovery/helpers";
 
 interface DiscoveryWarnings {
@@ -18,6 +19,7 @@ interface VertexDiscoveryRouteOptions {
   apiKey: unknown;
   accessToken: unknown;
   proxy: unknown;
+  cachedDiscoveryModels: VertexMetadataModel[];
   maybeReturnCachedDiscovery: () => Response | null;
   maybeReturnAutoFetchDisabled: () => Response | null;
   buildDiscoveryFallbackResponse: (warnings?: DiscoveryWarnings) => Response | null;
@@ -48,6 +50,18 @@ function vertexFetch(proxy: unknown): (url: string, init: RequestInit) => Promis
     safeOutboundFetch(url, {
       ...SAFE_OUTBOUND_FETCH_PRESETS.modelsPagination,
       guard: getProviderOutboundGuard(),
+      proxyConfig: proxy,
+      ...init,
+    });
+}
+
+function vertexMetadataFetch(
+  proxy: unknown
+): (url: string, init: RequestInit) => Promise<Response> {
+  return (url, init) =>
+    safeOutboundFetch(url, {
+      ...SAFE_OUTBOUND_FETCH_PRESETS.modelsDiscovery,
+      guard: "public-only",
       proxyConfig: proxy,
       ...init,
     });
@@ -193,7 +207,21 @@ export async function maybeHandleVertexModelDiscovery(
   });
 
   if (discovery.models.length > 0) {
-    return options.buildApiDiscoveryResponse(asNamedModels(discovery.models), discovery.warning, {
+    const liveModels = asNamedModels(discovery.models);
+    let enrichedLiveModels = liveModels;
+    try {
+      const { enrichVertexModelsWithMetadata } =
+        await import("@/lib/providerModels/vertexModelMetadata");
+      enrichedLiveModels = await enrichVertexModelsWithMetadata({
+        models: liveModels,
+        staleModels: options.cachedDiscoveryModels,
+        fetchImpl: vertexMetadataFetch(options.proxy),
+      });
+    } catch {
+      // Metadata is optional. A documentation or parser failure must never turn an authenticated
+      // live Vertex catalog into a failed model sync.
+    }
+    return options.buildApiDiscoveryResponse(enrichedLiveModels, discovery.warning, {
       catalogMode: "live_vertex_catalog",
     });
   }

@@ -1794,6 +1794,7 @@ export async function GET(
       apiKey,
       accessToken,
       proxy,
+      cachedDiscoveryModels,
       maybeReturnCachedDiscovery,
       maybeReturnAutoFetchDisabled,
       buildDiscoveryFallbackResponse,

@@ -41,6 +41,31 @@ function asObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function mergeDiscoveryModelsById(models: unknown[]): unknown[] {
+  const merged = new Map<string, Record<string, unknown>>();
+  const unkeyed: unknown[] = [];
+
+  for (const candidate of models) {
+    const model = asObject(candidate);
+    if (!model) {
+      unkeyed.push(candidate);
+      continue;
+    }
+    const id = typeof model.id === "string" ? model.id : null;
+    if (!id) {
+      unkeyed.push(candidate);
+      continue;
+    }
+    const existing = merged.get(id);
+    // Earlier sources have higher precedence. The Generative Language API is queried before the
+    // publisher catalog, so its structured token limits survive while publisher transport fields
+    // fill gaps.
+    merged.set(id, existing ? { ...model, ...existing } : model);
+  }
+
+  return [...merged.values(), ...unkeyed];
+}
+
 function readNextPageToken(data: unknown): string | null {
   const token = asObject(data)?.nextPageToken;
   return typeof token === "string" && token.length > 0 ? token : null;
