@@ -83,7 +83,11 @@ function collectModelsForConnections(
  * non-empty usable catalog. Missing, empty, malformed, or unavailable state
  * fails open to the static registry.
  */
-export async function getActiveSyncedCatalog(providerId: string): Promise<ActiveSyncedCatalog> {
+// This fork already returns discovery-only rows; keep the shared API signature.
+export async function getActiveSyncedCatalog(
+  providerId: string,
+  _includeCustomModels = true
+): Promise<ActiveSyncedCatalog> {
   const storedProviderId = resolveStoredProviderId(providerId);
   if (!storedProviderId) {
     return { authoritative: false, models: [] };

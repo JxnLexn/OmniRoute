@@ -190,6 +190,7 @@ export default function ProviderDetailPageClient() {
   const {
     modelMeta,
     syncedAvailableModels,
+    syncedCatalogAuthoritative,
     modelAliases,
     fetchProviderModelMeta,
     fetchAliases,
@@ -284,14 +285,14 @@ export default function ProviderDetailPageClient() {
     NOAUTH_PROVIDERS[providerId]?.noAuth === true ||
     getProviderById(providerId)?.managedAccount === true;
   const registryModels = getModelsByProviderId(providerId);
-  // Prefer synced API-discovered models when available, then merge built-ins
-  // and user-managed custom models without duplicating IDs. Cursor exclusive
-  // listing drops the static registry entirely when synced is non-empty.
+  // Use the server's active-catalog authority decision for display and Test All.
+  // Registry entries supply metadata/fallback; operator custom models remain.
   const models = useMemo(() => {
     return mergeProviderModelListing({
       providerId,
       registryModels,
       syncedModels: syncedAvailableModels,
+      syncedCatalogAuthoritative,
       customModels: (modelMeta.customModels || []).map((cm) => ({
         ...cm,
         id: cm.id,
@@ -305,6 +306,7 @@ export default function ProviderDetailPageClient() {
     registryModels,
     syncedAvailableModels,
     modelMeta.customModels,
+    syncedCatalogAuthoritative,
     usesCuratedModelsOnly,
   ]);
   const isUpstreamProxyProvider = providerInfo?.category === "upstream-proxy";
