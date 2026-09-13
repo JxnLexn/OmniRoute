@@ -9,7 +9,7 @@ export default function RoutingPageClient() {
   const t = useTranslations("reasoningRouting.editor");
   const searchParams = useSearchParams();
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 pb-10">
+    <div className="min-w-0 w-full space-y-6 pb-10">
       <header className="space-y-3">
         <Link href="/dashboard/api-manager" className="text-sm text-primary hover:underline">
           ← {t("backToKeys")}
