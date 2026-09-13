@@ -134,6 +134,8 @@ import { stripStore, usesClaudeBridge } from "./chatCore/agentRouterProtocol.ts"
 import { defaultClaudeToolType } from "./chatCore/claudeToolDefaults.ts";
 import { injectSystemPrompt, injectCustomSystemPrompt } from "../services/systemPrompt.ts";
 import { translateRequest, needsTranslation } from "../translator/index.ts";
+import { applyReasoningRuleDirective } from "@/lib/reasoningRouting/policy";
+import { withReasoningRuleContext } from "../utils/reasoningRuleContext.ts";
 import { FORMATS } from "../translator/formats.ts";
 import { collectCustomToolNamesForSourceFormat } from "../translator/request/openai-responses/additionalTools.ts";
 import { sanitizeKiroTools } from "../utils/kiroSanitizer.ts";
@@ -525,6 +527,9 @@ export async function handleChatCore({
   managedLease = null,
 }) {
   let { provider, model, extendedContext } = modelInfo;
+  // Keep the selected rule across format conversion, retries and refreshed credentials.
+  // Each combo leg gets its own execution context; nothing is written to shared accounts.
+  const reasoningRuleDirective = body?._omnirouteReasoningRule;
   if (!skipResourcePressureGuard) {
     try {
       const pressureGuard = checkResourcePressureGuard();
@@ -1175,6 +1180,22 @@ export async function handleChatCore({
   }
 
   log?.debug?.("FORMAT", `${sourceFormat} → ${targetFormat} | stream=${stream}`);
+
+  if (reasoningRuleDirective) {
+    // Cache identity must use the effective effort, not the overridden client value.
+    // Retain the directive for the translation step, where general thinking defaults run.
+    body = {
+      ...(applyReasoningRuleDirective(
+        body,
+        sourceFormat === FORMATS.OPENAI_RESPONSES
+          ? "openai-responses"
+          : sourceFormat === FORMATS.CLAUDE
+            ? "claude"
+            : undefined
+      ) as Record<string, unknown>),
+      _omnirouteReasoningRule: reasoningRuleDirective,
+    };
+  }
 
   // Preserve original body for cache signature — the body variable is mutated
   // multiple times below (sanitization, memory/skills injection) before the
@@ -2195,7 +2216,7 @@ export async function handleChatCore({
   try {
     if (nativeResponsesPassthrough) {
       translatedBody = stampNativeResponsesPassthroughBody(
-        body,
+        applyReasoningRuleDirective(body, "openai-responses") as Record<string, unknown>,
         nativeCodexPassthrough
           ? "codex"
           : nativeXaiResponsesPassthrough
@@ -2216,6 +2237,10 @@ export async function handleChatCore({
       // Claude Code-compatible providers expect Anthropic Messages-shaped payloads,
       // but we extract only role/text/max_tokens/effort from an OpenAI-like view first.
       if (sourceFormat === FORMATS.CLAUDE && isClaudeCodeSemanticPassthrough) {
+        normalizedForCc = applyReasoningRuleDirective(
+          normalizedForCc,
+          "claude"
+        ) as typeof normalizedForCc;
         log?.debug?.("FORMAT", "claude-code semantic passthrough enabled for compatible bridge");
       } else if (sourceFormat !== FORMATS.OPENAI) {
         const normalizeToolCallId = getModelNormalizeToolCallId(
@@ -2251,6 +2276,10 @@ export async function handleChatCore({
       const ccRequestDefaults = getClaudeCodeCompatibleRequestDefaults(
         credentials?.providerSpecificData
       );
+      // OpenAI-shaped bridge requests skip translateRequest too.
+      if (sourceFormat === FORMATS.OPENAI) {
+        normalizedForCc = applyReasoningRuleDirective(normalizedForCc) as typeof normalizedForCc;
+      }
       translatedBody = buildClaudeCodeCompatibleRequest({
         sourceBody: body,
         normalizedBody: normalizedForCc,
@@ -2280,7 +2309,7 @@ export async function handleChatCore({
       // payloads at high context (150+ msgs, 100+ tools). Fix: #1359.
       // Claude Code sends well-formed Messages API payloads — trust them
       // regardless of combo strategy or cache_control settings.
-      translatedBody = { ...body };
+      translatedBody = applyReasoningRuleDirective({ ...body }, "claude");
       translatedBody._disableToolPrefix = true;
 
       // Sanitize historical thinking-block signatures for Anthropic-native Claude OAuth.
@@ -2938,15 +2967,18 @@ export async function handleChatCore({
   // Get executor for this provider (with optional upstream proxy routing)
   const executor = await resolveExecutorWithProxy(provider);
   const getExecutionCredentials = () =>
-    resolveExecutionCredentialsFor({
-      credentials,
-      nativeCodexPassthrough: nativeResponsesPassthrough,
-      endpointPath,
-      targetFormat,
-      provider,
-      ccSessionId,
-      modelInfo,
-    });
+    withReasoningRuleContext(
+      resolveExecutionCredentialsFor({
+        credentials,
+        nativeCodexPassthrough: nativeResponsesPassthrough,
+        endpointPath,
+        targetFormat,
+        provider,
+        ccSessionId,
+        modelInfo,
+      }),
+      reasoningRuleDirective
+    );
 
   let onPipelineStreamError: streamFailure.PipelineStreamErrorHandler | null = null;
   let onClientDisconnectFinalize:

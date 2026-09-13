@@ -274,6 +274,8 @@ function stripInternalBodyFields(body: unknown): unknown {
   delete record._nativeXaiResponsesPassthrough;
   delete record._nativeOpenAICompatibleResponsesPassthrough;
   delete record._omnirouteResponsesStore;
+  delete record._omnirouteReasoningRule;
+  delete record._omnirouteReasoningRouteTrace;
   return body;
 }
 
