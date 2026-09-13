@@ -96,9 +96,14 @@ describe("isolated routing editor", () => {
   it("round-trips existing patterns and advanced values without changing routing semantics", async () => {
     const writes = setup();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    expect((screen.getByLabelText("Exact request ID or pattern") as HTMLInputElement).value).toBe(
-      savedRule.modelPattern
-    );
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "Exact request ID or pattern",
+          exact: true,
+        }) as HTMLInputElement
+      ).value
+    ).toBe(savedRule.modelPattern);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({
@@ -133,20 +138,26 @@ describe("isolated routing editor", () => {
   it("keeps a dirty draft on failed save and blocks the saved-rule simulator", async () => {
     setup({ failSave: true });
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Changed draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name", exact: true }), {
+      target: { value: "Changed draft" },
+    });
     expect(
       (screen.getByRole("button", { name: "Simulate without upstream" }) as HTMLButtonElement)
         .disabled
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByText("Save failed");
-    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Changed draft");
+    expect(
+      (screen.getByRole("textbox", { name: "Name", exact: true }) as HTMLInputElement).value
+    ).toBe("Changed draft");
   });
 
   it("asks before changing keys when the editor contains unsaved changes", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Changed draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Name", exact: true }), {
+      target: { value: "Changed draft" },
+    });
     fireEvent.change(screen.getByRole("combobox", { name: "API key" }), {
       target: { value: "second" },
     });
