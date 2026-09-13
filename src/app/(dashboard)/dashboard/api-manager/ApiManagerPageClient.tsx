@@ -32,7 +32,7 @@ import { ChaosModeAccessToggle } from "./components/ChaosModeAccessToggle";
 import { BypassProviderQuotaToggle } from "./components/BypassProviderQuotaToggle";
 import { ApiKeyCompressionToggle } from "./components/ApiKeyCompressionToggle";
 import ProviderModelPermissionList from "./components/ProviderModelPermissionList";
-import ReasoningRoutingRules from "@/shared/components/ReasoningRoutingRules";
+import RoutingEntryLink from "@/shared/components/routing/RoutingEntryLink";
 import { ALL_COMBOS_ACCESS_RULE } from "@/shared/constants/comboAccess";
 
 // Constants for validation
@@ -996,6 +996,8 @@ export default function ApiManagerPageClient() {
           {t("createKey")}
         </Button>
       </div>
+
+      <RoutingEntryLink />
 
       {/* Filter Bar — shown when there are keys */}
       {keys.length > 0 && (
@@ -2123,7 +2125,7 @@ const PermissionsModal = memo(function PermissionsModal({
           </div>
         )}
 
-        {apiKey?.id && <ReasoningRoutingRules apiKeyId={apiKey.id} />}
+        {apiKey?.id && <RoutingEntryLink apiKeyId={apiKey.id} />}
 
         {/* Access Mode Toggle */}
         <div className="flex gap-2 p-1 bg-surface rounded-lg">
