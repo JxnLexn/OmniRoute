@@ -19,7 +19,7 @@ jobs:
   build:
     name: Build and Push AMD64 Image
     if: github.repository == 'JxnLexn/OmniRoute'
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
