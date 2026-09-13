@@ -77,11 +77,11 @@ afterEach(() => {
 describe("isolated routing editor", () => {
   it("round-trips existing patterns and advanced values without changing routing semantics", async () => {
     const writes = setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     expect((screen.getByLabelText("Exact request ID or pattern") as HTMLInputElement).value).toBe(
       savedRule.modelPattern
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save changes", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({
       modelPattern: savedRule.modelPattern,
@@ -97,12 +97,12 @@ describe("isolated routing editor", () => {
 
   it("stores a selected source combo NAME while keeping the key scope", async () => {
     const writes = setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Match requests for"), { target: { value: "combo" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Source combo", exact: true }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Source combo" }), {
       target: { value: "gpt-5.6-luna-combo" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toMatchObject({
       modelPattern: "gpt-5.6-luna-combo",
@@ -114,29 +114,29 @@ describe("isolated routing editor", () => {
 
   it("keeps a dirty draft on failed save and blocks the saved-rule simulator", async () => {
     setup({ failSave: true });
-    fireEvent.click(await screen.findByRole("button", { name: "Edit", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Changed draft" } });
     expect(
       (screen.getByRole("button", { name: "Simulate without upstream" }) as HTMLButtonElement)
         .disabled
     ).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Save changes", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByText("Save failed");
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Changed draft");
   });
 
   it("asks before changing keys when the editor contains unsaved changes", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Changed draft" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "API key", exact: true }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "API key" }), {
       target: { value: "second" },
     });
     expect(screen.getByRole("dialog")).not.toBeNull();
     fireEvent.click(screen.getByRole("dialog").querySelector("button")!);
-    expect(
-      (screen.getByRole("combobox", { name: "API key", exact: true }) as HTMLSelectElement).value
-    ).toBe("key");
+    expect((screen.getByRole("combobox", { name: "API key" }) as HTMLSelectElement).value).toBe(
+      "key"
+    );
   });
 
   it("does not offer writes after a failed configuration load", async () => {
@@ -145,6 +145,6 @@ describe("isolated routing editor", () => {
     expect((screen.getByRole("button", { name: "New rule" }) as HTMLButtonElement).disabled).toBe(
       true
     );
-    expect(screen.queryByRole("button", { name: "Edit", exact: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 });
