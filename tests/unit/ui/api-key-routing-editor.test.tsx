@@ -5,6 +5,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../../src/i18n/messages/en.json";
 import ReasoningRoutingRules from "../../../src/shared/components/ReasoningRoutingRules";
+import RoutingPageClient from "../../../src/app/(dashboard)/dashboard/api-manager/routing/RoutingPageClient";
+
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
 
 const savedRule = {
   id: "rule",
@@ -75,6 +78,21 @@ afterEach(() => {
 });
 
 describe("isolated routing editor", () => {
+  it("uses the full dashboard width without a centered maximum-width wrapper", async () => {
+    setup();
+    cleanup();
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <RoutingPageClient />
+      </NextIntlClientProvider>
+    );
+    await screen.findByText("Luna low");
+    const classes = Array.from(container.firstElementChild!.classList);
+    expect(classes).toContain("w-full");
+    expect(classes).toContain("min-w-0");
+    expect(classes.some((name) => name.startsWith("max-w-") || name === "mx-auto")).toBe(false);
+  });
+
   it("round-trips existing patterns and advanced values without changing routing semantics", async () => {
     const writes = setup();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
