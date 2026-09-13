@@ -9,6 +9,7 @@ import Input from "./Input";
 import Select from "./Select";
 import Toggle from "./Toggle";
 import { ConfirmModal } from "./Modal";
+import CodexServiceModeSettings from "./CodexServiceModeSettings";
 import RoutingChoice from "./routing/RoutingChoice";
 import { readCatalogModels } from "./ModelSelectField";
 
@@ -507,6 +508,10 @@ export default function ReasoningRoutingRules({
           </p>
         )}
       </Card>
+
+      {apiKeyId && !keyMissing && !loading && !loadFailed && (
+        <CodexServiceModeSettings key={apiKeyId} apiKeyId={apiKeyId} />
+      )}
 
       <Card title={e("ruleList")} subtitle={e("ruleCount", { count: scopedRules.length })}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

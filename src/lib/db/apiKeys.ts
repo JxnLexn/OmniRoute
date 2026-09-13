@@ -2,6 +2,10 @@
  * db/apiKeys.js — API key management.
  */
 
+import {
+  parseApiKeyCodexServiceMode,
+  type ApiKeyCodexServiceMode,
+} from "../../shared/constants/codexServiceMode";
 import { createHash } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { getDbInstance, rowToCamel } from "./core";
@@ -108,6 +112,7 @@ interface ApiKeyMetadata {
   proxyId: string | null;
   allowedEndpoints: string[];
   streamDefaultMode: "legacy" | "json";
+  codexServiceMode: ApiKeyCodexServiceMode;
   cacheDefaultMode: "legacy" | "bypass";
   disableNonPublicModels: boolean;
   allowUsageCommand: boolean;
@@ -149,6 +154,8 @@ interface ApiKeyRow extends JsonRecord {
   proxy_id?: unknown;
   stream_default_mode?: unknown;
   streamDefaultMode?: unknown;
+  codex_service_mode?: unknown;
+  codexServiceMode?: unknown;
   cache_default_mode?: unknown;
   cacheDefaultMode?: unknown;
   allow_usage_command?: unknown;
@@ -205,6 +212,7 @@ interface ApiKeyView extends JsonRecord {
   expiresAt?: string | null;
   allowedEndpoints: string[];
   streamDefaultMode: "legacy" | "json";
+  codexServiceMode: ApiKeyCodexServiceMode;
   cacheDefaultMode: "legacy" | "bypass";
   disableNonPublicModels?: boolean;
   allowUsageCommand?: boolean;
@@ -436,7 +444,7 @@ function getPreparedStatements(db: ApiKeysDbLike): ApiKeysStatements {
       "SELECT id, expires_at, revoked_at, is_active, is_banned FROM api_keys WHERE key = ? OR key_hash = ?",
     );
     _stmtGetKeyMetadata = db.prepare<ApiKeyRow>(
-      "SELECT id, name, machine_id, model_access_mode, allowed_models, blocked_models, allowed_combos, allowed_connections, allowed_quotas, no_log, auto_resolve, is_active, access_schedule, max_requests_per_day, max_requests_per_minute, throttle_delay_ms, max_sessions, revoked_at, expires_at, ip_allowlist, scopes, rate_limits, is_banned, key_hash, allowed_endpoints, stream_default_mode, cache_default_mode, disable_non_public_models, allow_usage_command, usage_limit_enabled, daily_usage_limit_usd, weekly_usage_limit_usd, chaos_mode_enabled, compression_enabled, proxy_id FROM api_keys WHERE key = ? OR key_hash = ?",
+      "SELECT id, name, machine_id, model_access_mode, allowed_models, blocked_models, allowed_combos, allowed_connections, allowed_quotas, no_log, auto_resolve, is_active, access_schedule, max_requests_per_day, max_requests_per_minute, throttle_delay_ms, max_sessions, revoked_at, expires_at, ip_allowlist, scopes, rate_limits, is_banned, key_hash, allowed_endpoints, stream_default_mode, cache_default_mode, codex_service_mode, disable_non_public_models, allow_usage_command, usage_limit_enabled, daily_usage_limit_usd, weekly_usage_limit_usd, chaos_mode_enabled, compression_enabled, proxy_id FROM api_keys WHERE key = ? OR key_hash = ?"
     );
     _stmtInsertKey = db.prepare(
       "INSERT INTO api_keys (id, name, key, machine_id, allowed_models, allowed_combos, allowed_connections, no_log, created_at, key_prefix, key_hash, scopes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -495,6 +503,9 @@ export async function getApiKeys(limit?: number, offset?: number) {
     camelRow.scopes = parseStringList((camelRow as JsonRecord).scopes);
     camelRow.allowedEndpoints = parseStringList((camelRow as JsonRecord).allowedEndpoints);
     camelRow.streamDefaultMode = parseStreamDefaultMode((camelRow as JsonRecord).streamDefaultMode);
+    camelRow.codexServiceMode = parseApiKeyCodexServiceMode(
+      (camelRow as JsonRecord).codexServiceMode
+    );
     camelRow.cacheDefaultMode = parseCacheDefaultMode((camelRow as JsonRecord).cacheDefaultMode);
     camelRow.disableNonPublicModels = parseDisableNonPublicModels(
       (camelRow as JsonRecord).disableNonPublicModels,
@@ -632,6 +643,9 @@ export async function getApiKeyById(id: string) {
   camelRow.scopes = parseStringList((camelRow as JsonRecord).scopes);
   camelRow.allowedEndpoints = parseStringList((camelRow as JsonRecord).allowedEndpoints);
   camelRow.streamDefaultMode = parseStreamDefaultMode((camelRow as JsonRecord).streamDefaultMode);
+  camelRow.codexServiceMode = parseApiKeyCodexServiceMode(
+    (camelRow as JsonRecord).codexServiceMode
+  );
   camelRow.cacheDefaultMode = parseCacheDefaultMode((camelRow as JsonRecord).cacheDefaultMode);
   camelRow.disableNonPublicModels = parseDisableNonPublicModels(
     (camelRow as JsonRecord).disableNonPublicModels,
@@ -785,6 +799,7 @@ export async function updateApiKeyPermissions(
     (normalized as Record<string, unknown>).proxyId === undefined &&
     (normalized as Record<string, unknown>).allowedEndpoints === undefined &&
     (normalized as Record<string, unknown>).streamDefaultMode === undefined &&
+    normalized.codexServiceMode === undefined &&
     (normalized as Record<string, unknown>).cacheDefaultMode === undefined &&
     normalized.disableNonPublicModels === undefined &&
     normalized.allowUsageCommand === undefined &&
@@ -819,6 +834,7 @@ export async function updateApiKeyPermissions(
     scopes?: string;
     proxyId?: string | null;
     streamDefaultMode?: "legacy" | "json";
+    codexServiceMode?: ApiKeyCodexServiceMode;
     cacheDefaultMode?: "legacy" | "bypass";
     disableNonPublicModels?: number;
     allowUsageCommand?: number;
@@ -973,6 +989,10 @@ export async function updateApiKeyPermissions(
     params.streamDefaultMode = parseStreamDefaultMode(streamDefaultModeUpdate);
   }
 
+  if (normalized.codexServiceMode !== undefined) {
+    updates.push("codex_service_mode = @codexServiceMode");
+    params.codexServiceMode = parseApiKeyCodexServiceMode(normalized.codexServiceMode);
+  }
   const cacheDefaultModeUpdate = (normalized as Record<string, unknown>).cacheDefaultMode;
   if (cacheDefaultModeUpdate !== undefined) {
     updates.push("cache_default_mode = @cacheDefaultMode");
@@ -1366,6 +1386,7 @@ export async function getApiKeyMetadata(
       proxyId: null,
       allowedEndpoints: [],
       streamDefaultMode: "legacy",
+      codexServiceMode: "inherit",
       cacheDefaultMode: "legacy",
       disableNonPublicModels: false,
       allowUsageCommand: false,
@@ -1444,6 +1465,9 @@ export async function getApiKeyMetadata(
     ),
     streamDefaultMode: parseStreamDefaultMode(
       (record as JsonRecord).stream_default_mode ?? (record as JsonRecord).streamDefaultMode,
+    ),
+    codexServiceMode: parseApiKeyCodexServiceMode(
+      record.codex_service_mode ?? record.codexServiceMode
     ),
     cacheDefaultMode: parseCacheDefaultMode(
       (record as JsonRecord).cache_default_mode ?? (record as JsonRecord).cacheDefaultMode
