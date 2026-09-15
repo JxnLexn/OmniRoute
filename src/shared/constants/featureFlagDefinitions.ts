@@ -570,6 +570,42 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     requiresRestart: false,
     warningLevel: "caution",
   },
+  {
+    key: "SEARCH_STATS_HIDE_DELETED_CONNECTIONS",
+    label: "Hide Deleted Search Connections",
+    description:
+      "Search stats and recent searches only count providers that still have a live connection (keyless providers such as duckduckgo-free always count). Off keeps every retained search row with a provider id.",
+    descriptionI18nKey: "featureFlagSearchStatsHideDeletedConnectionsDescription",
+    category: "runtime",
+    defaultValue: "false",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "info",
+  },
+  {
+    key: "FREE_BADGE_REQUIRES_PROVIDER_FREE_TIER",
+    label: "Strict Free Badge",
+    description:
+      "Dashboard provider pages: show the Free badge only on signals the provider honors — drops the display-name heuristic, non-boolean free fields and :free suffixes on registered providers without a documented free tier. Off keeps the historical badge rule.",
+    descriptionI18nKey: "featureFlagFreeBadgeRequiresProviderFreeTierDescription",
+    category: "runtime",
+    defaultValue: "false",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "info",
+  },
+  {
+    key: "RETRY_AFTER_PROVENANCE_ENABLED",
+    label: "Retry-After Provenance",
+    description:
+      "On aggregated 429/503 unavailable responses, omit Retry-After when no concrete future retry time is known (instead of a synthetic 1s), add error.retry_after_provenance (signal | none), and let combo drain paths read prose retry hints from JSON and plain-text upstream bodies.",
+    descriptionI18nKey: "featureFlagRetryAfterProvenanceEnabledDescription",
+    category: "runtime",
+    defaultValue: "false",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "caution",
+  },
 
   // ──────────────── CLI (5) ────────────────
   {

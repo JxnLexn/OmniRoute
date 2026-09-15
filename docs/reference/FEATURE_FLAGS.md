@@ -46,7 +46,7 @@ A boolean flag is considered **enabled** when its effective value is `"true"`,
 
 ## Flag Catalog
 
-55 flags across 6 categories. **Default** is the definition default — the value
+58 flags across 6 categories. **Default** is the definition default — the value
 used when neither a DB override nor an environment variable is present.
 
 ### Security (10)
@@ -88,7 +88,7 @@ used when neither a DB override nor an environment variable is present.
 | `CAPABILITY_FILTER_ENABLED`     | boolean | `false`    | Reject requests before dispatch when the target model lacks required capabilities (vision, tools, structured output, context window). Protects direct single-provider requests that bypass the combo-layer compatibility filter. |
 | `RADAR_ENABLED`                 | boolean | `false`    | Enable the OmniRoute Radar module (catalog feed screens and sync). Off by default; enabling only unlocks the UI — data sync remains a separate opt-in.                                                                           |
 
-### Runtime (23)
+### Runtime (26)
 
 | Key                                         | Type    | Default | Restart | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------- | ------- | ------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -115,6 +115,9 @@ used when neither a DB override nor an environment variable is present.
 | `EXPOSE_FUNCTIONAL_GATEWAY_MIRRORS`         | boolean | `false` |         | Advertise <gateway-alias>/<model> mirror ids on /v1/models for models whose canonical owner has no active credential but a passthrough gateway with an active credential routes them. Warning: adds catalog entries for all clients when enabled globally.                                                                                                                                                                                                           |
 | `NEWAPI_AGGREGATOR_BALANCE`                 | boolean | `false` |         | Enable balance detection for New-API / One-API / Sub2API aggregator compatible nodes. When enabled, compatible nodes with the aggregator flag set will report their balance in the dashboard and quota-preflight routing.                                                                                                                                                                                                                                            |
 | `SERVER_OWNED_TOOL_LOOP_ENABLED`            | boolean | `false` |         | Continue non-streaming server-owned tool calls until the model returns a client-usable response.                                                                                                                                                                                                                                                                                                                                                                     |
+| `SEARCH_STATS_HIDE_DELETED_CONNECTIONS`     | boolean | `false` |         | Search stats and recent searches only count providers that still have a live connection (keyless providers such as duckduckgo-free always count). Off keeps every retained search row with a provider id.                                                                                                                                                                                                                                                            |
+| `FREE_BADGE_REQUIRES_PROVIDER_FREE_TIER`    | boolean | `false` |         | Dashboard provider pages: show the Free badge only on signals the provider honors — drops the display-name heuristic, non-boolean free fields and :free suffixes on registered providers without a documented free tier. Off keeps the historical badge rule.                                                                                                                                                                                                        |
+| `RETRY_AFTER_PROVENANCE_ENABLED`            | boolean | `false` |         | On aggregated 429/503 unavailable responses, omit `Retry-After` when no concrete future retry time is known (instead of a synthetic 1s), add `error.retry_after_provenance` (`signal` \| `none`), and let combo drain paths read prose retry hints from JSON and plain-text upstream bodies. The field only appears on responses built by `unavailableResponse()`; other 429/503 bodies are unchanged.                                                               |
 
 ### CLI (5)
 
@@ -195,7 +198,7 @@ Returns every flag with its effective value, source, and a summary.
       "requiresRestart": false,
       "warningLevel": "caution",
     },
-    // ... all 55 flags
+    // ... all 58 flags
   ],
   "summary": {
     "total": 54,
