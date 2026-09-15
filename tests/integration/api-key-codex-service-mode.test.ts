@@ -19,7 +19,7 @@ test("service mode: migration preserves existing rows and rejects invalid values
     );
     db.exec(
       readFileSync(
-        new URL("../../src/lib/db/migrations/177_api_key_codex_service_mode.sql", import.meta.url),
+        new URL("../../src/lib/db/migrations/179_api_key_codex_service_mode.sql", import.meta.url),
         "utf8"
       )
     );
