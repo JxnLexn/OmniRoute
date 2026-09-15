@@ -87,6 +87,48 @@ async function forceLow(modelPattern: string, apiKeyId: string) {
   });
 }
 
+test("reliable reasoning: forced effort wins over explicit effort and adaptive header opt-in", async () => {
+  const key = await h.seedApiKey();
+  await forceLow("codex/gpt-5.6-luna", key.id);
+  const response = await h.handleChat(
+    h.buildRequest({
+      authKey: key.key,
+      headers: { "x-omniroute-effort": "auto" },
+      body: {
+        model: "codex/gpt-5.6-luna",
+        stream: false,
+        reasoning_effort: "high",
+        messages: [
+          { role: "user", content: "Prove the theorem step by step and verify every edge case." },
+        ],
+      },
+    })
+  );
+  await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(calls.at(-1)?.reasoning?.effort, "low");
+});
+
+test("reliable reasoning: explicit client effort survives adaptive header opt-in", async () => {
+  const key = await h.seedApiKey();
+  await providers.updateProviderConnection(firstConnectionId, { providerSpecificData: {} });
+  const response = await h.handleChat(
+    h.buildRequest({
+      authKey: key.key,
+      headers: { "x-omniroute-effort": "auto" },
+      body: {
+        model: "codex/gpt-5.6-luna",
+        stream: false,
+        reasoning_effort: "medium",
+        messages: [{ role: "user", content: "Reply ok." }],
+      },
+    })
+  );
+  await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(calls.at(-1)?.reasoning?.effort, "medium");
+});
+
 test("reliable reasoning: native Responses honors key force without leaking cross-format fields", async () => {
   const key = await h.seedApiKey();
   await forceLow("codex/gpt-5.6-luna", key.id);
