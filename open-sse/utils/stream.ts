@@ -1595,12 +1595,13 @@ export function createSSEStream(options: StreamOptions = {}) {
                   }
                   // #7936 — restore `namespace` + `name` fields on passthrough
                   // Responses function_call items for downstream Codex clients.
+                  let responsesIdentityRestored = false;
                   if (
                     parsed.type === "response.output_item.added" ||
                     parsed.type === "response.output_item.done" ||
                     parsed.type === "response.completed"
                   ) {
-                    restoreResponsesPassthroughFunctionCallIdentity(
+                    responsesIdentityRestored = restoreResponsesPassthroughFunctionCallIdentity(
                       parsed as JsonRecord,
                       requestToolIdentityMap
                     );
@@ -1641,16 +1642,14 @@ export function createSSEStream(options: StreamOptions = {}) {
                         isResponsesCommentaryMessageItem
                       ).items
                     : passthroughResponsesOutputItems;
-                  const backfilled = backfillResponsesCompletedOutput(
-                    parsed,
-                    backfillCandidates
-                  );
+                  const backfilled = backfillResponsesCompletedOutput(parsed, backfillCandidates);
                   const usageNormalized = normalizeUsage(parsed);
                   if (
                     stripped ||
                     backfilled ||
                     textualToolCallBackfilled ||
                     responsesIdsNormalized ||
+                    responsesIdentityRestored ||
                     usageNormalized ||
                     responsesCommentaryStrippedFromCompleted
                   ) {

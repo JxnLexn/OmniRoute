@@ -2,6 +2,7 @@ import {
   extractRequestToolIdentityMap,
   toToolNameAliasMap,
 } from "./chatCore/requestToolIdentity.ts";
+import { normalizeXaiResponsesNamespaces } from "./chatCore/xaiResponsesNamespaces.ts";
 import { injectMemoryAndSkills } from "./chatCore/memorySkillsInjection.ts";
 import { resolveChatCoreRequestSetup } from "./chatCore/requestSetup.ts";
 import { normalizeOpenAICompatibleTools } from "./chatCore/openAICompatibleTools.ts";
@@ -2589,6 +2590,7 @@ export async function handleChatCore({
   // the latter is a Kiro/Claude passthrough alias channel with string values,
   // while namespace identities carry `{namespace, name}` for the #7936 response
   // seam. Extract first because Kiro merge may reuse `_toolNameMap` below.
+  normalizeXaiResponsesNamespaces(translatedBody, provider, targetFormat);
   const requestToolIdentityMap = extractRequestToolIdentityMap(translatedBody);
 
   // Kiro: sanitize tool schemas before dispatch. Kiro returns 400 "Improperly
