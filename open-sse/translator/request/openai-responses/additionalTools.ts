@@ -111,6 +111,21 @@ export function collectResponsesTools(rootTools: unknown, inputItems: unknown[])
   return merged;
 }
 
+/** Promote client tool declarations before sending native Responses payloads upstream. */
+export function promoteResponsesAdditionalTools(body: JsonRecord): void {
+  const input = Array.isArray(body.input) ? body.input : [body.input];
+  const isDeclaration = (value: unknown): boolean => {
+    const item = toRecord(value);
+    return item.type === "additional_tools" && Array.isArray(item.tools);
+  };
+  if (!input.some(isDeclaration)) return;
+
+  // Match the Chat conversion's precedence and namespace merging. Do not rewrite
+  // opaque history, or silently consume malformed declarations without their tools.
+  body.tools = collectResponsesTools(body.tools, input);
+  body.input = input.filter((item) => !isDeclaration(item));
+}
+
 /** Return the custom/freeform tool names after applying the same precedence rules as conversion. */
 export function collectResponsesCustomToolNames(
   rootTools: unknown,

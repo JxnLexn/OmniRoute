@@ -1,3 +1,5 @@
+import { promoteResponsesAdditionalTools } from "../translator/request/openai-responses/additionalTools.ts";
+
 type JsonRecord = Record<string, unknown>;
 
 function normalizeAgentMessageForChat(item: JsonRecord): JsonRecord | null {
@@ -101,6 +103,7 @@ function normalizeCodexResponsesInputItem(itemValue: unknown): unknown {
 }
 
 export function normalizeCodexResponsesInput(body: JsonRecord): void {
+  promoteResponsesAdditionalTools(body);
   if (Array.isArray(body.input)) {
     body.input = body.input.map(normalizeCodexResponsesInputItem);
     return;
