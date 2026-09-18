@@ -12,16 +12,22 @@ export function normalizeXaiResponsesNamespaces(
   body: RecordValue,
   provider: string,
   targetFormat: string
-): void {
-  if (targetFormat !== "openai-responses" || !XAI_RESPONSES_PROVIDERS.has(provider)) return;
+): Set<string> {
+  const customNames = new Set<string>();
+  if (targetFormat !== "openai-responses" || !XAI_RESPONSES_PROVIDERS.has(provider))
+    return customNames;
   const tools = Array.isArray(body.tools) ? body.tools : [];
   const input = Array.isArray(body.input) ? body.input : [];
   if (
-    !tools.some((t) => record(t).type === "namespace") &&
-    !input.some((i) => record(i).type === "function_call" && record(i).namespace) &&
+    !tools.some((t) => ["namespace", "custom"].includes(String(record(t).type))) &&
+    !input.some(
+      (i) =>
+        ["custom_tool_call", "custom_tool_call_output"].includes(String(record(i).type)) ||
+        (record(i).type === "function_call" && record(i).namespace)
+    ) &&
     !record(body.tool_choice).namespace
   )
-    return;
+    return customNames;
   const identities = new Map<string, NamespaceIdentity>();
   const names = new Map<string, string>();
   const reserved = new Set(
@@ -49,8 +55,26 @@ export function normalizeXaiResponsesNamespaces(
       if (tool.type === "namespace" && typeof tool.name === "string" && Array.isArray(tool.tools)) {
         return flatten(tool.tools, namespace ? `${namespace}.${tool.name}` : tool.name);
       }
-      if (!namespace || typeof tool.name !== "string") return [value];
-      return [{ ...tool, type: tool.type ?? "function", name: wireName(namespace, tool.name) }];
+      if (typeof tool.name !== "string") return [value];
+      const name = namespace ? wireName(namespace, tool.name) : tool.name;
+      if (tool.type === "custom") {
+        customNames.add(name);
+        return [
+          {
+            type: "function",
+            name,
+            description: tool.description,
+            parameters: {
+              type: "object",
+              properties: { input: { type: "string" } },
+              required: ["input"],
+              additionalProperties: false,
+            },
+          },
+        ];
+      }
+      if (!namespace) return [value];
+      return [{ ...tool, type: tool.type ?? "function", name }];
     });
   body.tools = flatten(tools);
 
@@ -63,11 +87,25 @@ export function normalizeXaiResponsesNamespaces(
     return result;
   };
   if (Array.isArray(body.input)) {
-    body.input = body.input.map((value) =>
-      record(value).type === "function_call" ? qualify(value) : value
-    );
+    body.input = body.input.map((value) => {
+      const item = record(value);
+      if (item.type === "custom_tool_call") {
+        const mapped = record(qualify(item));
+        const result: RecordValue = {
+          ...mapped,
+          type: "function_call",
+          arguments: JSON.stringify({ input: item.input ?? "" }),
+        };
+        delete result.input;
+        return result;
+      }
+      if (item.type === "custom_tool_call_output") return { ...item, type: "function_call_output" };
+      return item.type === "function_call" ? qualify(value) : value;
+    });
   }
   if (record(body.tool_choice).type === "function") body.tool_choice = qualify(body.tool_choice);
+  if (record(body.tool_choice).type === "custom")
+    body.tool_choice = { ...record(qualify(body.tool_choice)), type: "function" };
   const choice = record(body.tool_choice);
   if (choice.type === "allowed_tools" && Array.isArray(choice.tools)) {
     body.tool_choice = { ...choice, tools: choice.tools.map(qualify) };
@@ -80,4 +118,5 @@ export function normalizeXaiResponsesNamespaces(
       writable: true,
     });
   }
+  return customNames;
 }

@@ -3,6 +3,10 @@ import {
   toToolNameAliasMap,
 } from "./chatCore/requestToolIdentity.ts";
 import { normalizeXaiResponsesNamespaces } from "./chatCore/xaiResponsesNamespaces.ts";
+import {
+  restoreXaiCustomToolItem,
+  restoreXaiCustomToolStream,
+} from "./chatCore/xaiResponsesCustomTools.ts";
 import { injectMemoryAndSkills } from "./chatCore/memorySkillsInjection.ts";
 import { resolveChatCoreRequestSetup } from "./chatCore/requestSetup.ts";
 import { normalizeOpenAICompatibleTools } from "./chatCore/openAICompatibleTools.ts";
@@ -2590,7 +2594,11 @@ export async function handleChatCore({
   // the latter is a Kiro/Claude passthrough alias channel with string values,
   // while namespace identities carry `{namespace, name}` for the #7936 response
   // seam. Extract first because Kiro merge may reuse `_toolNameMap` below.
-  normalizeXaiResponsesNamespaces(translatedBody, provider, targetFormat);
+  const xaiCustomToolNames = normalizeXaiResponsesNamespaces(
+    translatedBody,
+    provider,
+    targetFormat
+  );
   const requestToolIdentityMap = extractRequestToolIdentityMap(translatedBody);
 
   // Kiro: sanitize tool schemas before dispatch. Kiro returns 400 "Improperly
@@ -5014,6 +5022,9 @@ export async function handleChatCore({
     // Extracts <think> and <thinking> tags into reasoning_content
     // Source format determines output shape. If we are outputting OpenAI shape or pseudo-OpenAI shape, sanitize.
     if (clientResponseFormat === FORMATS.OPENAI_RESPONSES) {
+      for (const item of translatedResponse?.output ?? []) {
+        restoreXaiCustomToolItem(item, xaiCustomToolNames, requestToolIdentityMap);
+      }
       translatedResponse = sanitizeResponsesApiResponse(translatedResponse);
       // Responses-API non-stream path: restore `{namespace, name}` on every
       // `function_call` item that was flattened from a namespace sub-tool on
@@ -5377,6 +5388,11 @@ export async function handleChatCore({
   // upstream body and synthesize an equivalent OpenAI SSE stream so the
   // streaming pipeline (and the client) get a valid stream.
   providerResponse = await maybeConvertJsonBodyToSse(providerResponse, { log, provider, model });
+  providerResponse = restoreXaiCustomToolStream(
+    providerResponse,
+    xaiCustomToolNames,
+    requestToolIdentityMap
+  );
   const streamReadinessPolicy = resolveStreamReadinessTimeout({
     baseTimeoutMs: STREAM_READINESS_TIMEOUT_MS,
     provider,
