@@ -59,10 +59,11 @@ test("codex native responses passthrough normalizes additional_tools items", asy
 
   const result = (await executor.transformRequest("gpt-5.5", body, true, {} as never)) as {
     input: Array<Record<string, unknown>>;
+    tools: unknown[];
   };
 
-  assert.deepEqual(result.input[0], { type: "additional_tools", role: "developer", tools });
-  assert.deepEqual(result.input[1], { type: "message", role: "user", content: messageContent });
+  assert.deepEqual(result.tools, tools);
+  assert.deepEqual(result.input, [{ type: "message", role: "user", content: messageContent }]);
 });
 
 test.after(() => {

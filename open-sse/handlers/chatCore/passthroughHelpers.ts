@@ -1,4 +1,5 @@
 import { FORMATS } from "../../translator/formats.ts";
+import { promoteResponsesAdditionalTools } from "../../translator/request/openai-responses/additionalTools.ts";
 import { isVerifiedNativeCodexRequest } from "../../config/codexIdentity.ts";
 import { isClaudeCodeCompatibleProvider } from "../../services/claudeCodeCompatible.ts";
 import { isResponsesEndpointPath } from "../../utils/responsesEndpoint.ts";
@@ -48,6 +49,8 @@ export function stampNativeResponsesPassthroughBody(
   body: Record<string, unknown>,
   mode: "codex" | "xai" | "openai-compatible"
 ): Record<string, unknown> {
+  body = { ...body };
+  promoteResponsesAdditionalTools(body);
   if (mode === "codex") return { ...body, _nativeCodexPassthrough: true };
   if (mode === "xai") return { ...body, _nativeXaiResponsesPassthrough: true };
   return { ...body, _nativeOpenAICompatibleResponsesPassthrough: true };

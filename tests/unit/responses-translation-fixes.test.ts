@@ -202,7 +202,7 @@ test("Codex Responses input: null input normalizes to an empty list (not [null])
   assert.deepEqual(body.input, []);
 });
 
-test("Codex Responses input: additional_tools drops unsupported content", () => {
+test("Codex Responses input: additional_tools promotes tools and drops the wrapper", () => {
   const body: Record<string, unknown> = {
     input: [
       {
@@ -216,12 +216,9 @@ test("Codex Responses input: additional_tools drops unsupported content", () => 
 
   normalizeCodexResponsesInput(body);
 
-  assert.deepEqual(body.input, [
-    {
-      type: "additional_tools",
-      role: "developer",
-      tools: [{ type: "function", name: "terminal", parameters: { type: "object" } }],
-    },
+  assert.deepEqual(body.input, []);
+  assert.deepEqual(body.tools, [
+    { type: "function", name: "terminal", parameters: { type: "object" } },
   ]);
 });
 

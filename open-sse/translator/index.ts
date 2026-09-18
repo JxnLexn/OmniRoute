@@ -1,4 +1,5 @@
 import { FORMATS } from "./formats.ts";
+import { promoteResponsesAdditionalTools } from "./request/openai-responses/additionalTools.ts";
 import {
   ensureToolCallIds,
   fixMissingToolResponses,
@@ -101,6 +102,7 @@ function normalizeOpenAIResponsesRequest(body) {
   if (!body || typeof body !== "object") return body;
 
   const normalized = promoteStrayReasoningEffort({ ...body });
+  promoteResponsesAdditionalTools(normalized);
 
   // #10165 safety net: if a chat-shaped body reached Responses normalization
   // without input, promote messages → input and map token/format fields.
