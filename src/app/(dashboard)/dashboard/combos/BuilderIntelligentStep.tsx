@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Card from "@/shared/components/Card";
 import {
   DEFAULT_INTELLIGENT_WEIGHTS,
+  applyIntelligentRoutingConfigPatch,
   FACTOR_LABELS,
   MODE_PACK_OPTIONS,
   ROUTER_STRATEGY_OPTIONS,
@@ -85,14 +86,7 @@ export default function BuilderIntelligentStep({
   );
 
   const updateConfig = (patch: Record<string, unknown>) => {
-    onChange({
-      ...normalizedConfig,
-      ...patch,
-      weights: {
-        ...normalizedConfig.weights,
-        ...((patch.weights as Record<string, number>) || {}),
-      },
-    });
+    onChange(applyIntelligentRoutingConfigPatch(config, patch));
   };
 
   const toggleCandidateProvider = (providerId: string) => {
