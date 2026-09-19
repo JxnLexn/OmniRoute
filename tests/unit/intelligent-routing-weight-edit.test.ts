@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as routing from "../../src/lib/combos/intelligentRouting.ts";
 import { parseAutoConfig } from "../../open-sse/services/combo/autoConfig.ts";
-import { calculateResetWindowAffinity } from "../../open-sse/services/combo/quotaScoring.ts";
+import { calculateAutoResetWindowAffinity } from "../../open-sse/services/combo/quotaScoring.ts";
 import { calculateFactors, calculateScore } from "../../open-sse/services/autoCombo/scoring.ts";
 
 const patchConfig = (config: Record<string, unknown>, patch: Record<string, unknown>) => {
@@ -61,7 +61,7 @@ test("edited reset weight favors a near weekly reset despite a nearer competing 
     p95LatencyMs: 100,
     latencyStdDev: 10,
     errorRate: 0,
-    resetWindowAffinity: calculateResetWindowAffinity(
+    resetWindowAffinity: calculateAutoResetWindowAffinity(
       quota(weeklyMinutes, sessionMinutes),
       cfg.resetWindowConfig
     ),
@@ -74,4 +74,32 @@ test("edited reset weight favors a near weekly reset despite a nearer competing 
     )
   );
   assert.ok(scores[0] > scores[1], "weekly reset must contribute to actual auto scoring");
+});
+
+test("auto reset affinity weights weekly 65 percent and session 35 percent", async () => {
+  const scoring = await import("../../open-sse/services/combo/quotaScoring.ts");
+  const fn = Reflect.get(scoring, "calculateAutoResetWindowAffinity");
+  assert.equal(typeof fn, "function");
+  const now = Date.now();
+  const q = (weekly: number, session: number) => ({
+    window7d: { percentUsed: 0.2, resetAt: new Date(now + weekly).toISOString() },
+    window5h: { percentUsed: 0.2, resetAt: new Date(now + session).toISOString() },
+  });
+  const week = 7 * 24 * 3600000,
+    session = 5 * 3600000;
+  assert.ok(Math.abs(fn(q(0, session), undefined, now) - 0.65) < 0.00001);
+  assert.ok(Math.abs(fn(q(week, 0), undefined, now) - 0.35) < 0.00001);
+  assert.equal(
+    fn(
+      q(week, 0),
+      { windows: ["weekly"], tieBandMs: 0, quotaCacheTtlMs: 0, quotaCacheMaxStaleMs: 0 },
+      now
+    ),
+    0
+  );
+  assert.equal(
+    fn({ window7d: { percentUsed: 0.2, resetAt: new Date(now).toISOString() } }, undefined, now),
+    1
+  );
+  assert.equal(fn({ limitReached: true }, undefined, now), 0);
 });
