@@ -151,7 +151,7 @@ export async function GET(request: Request) {
                   providerSpecificData: c.providerSpecificData ?? {},
                 },
                 Date.now(),
-                quotaCache[c.id]
+                quotaCache[String(c.id)]
               ),
             }
           : {}),
