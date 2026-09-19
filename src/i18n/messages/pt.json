@@ -5016,6 +5016,11 @@
     "providerRequiresPassword": "Precisa de definir uma senha primeiro para adicionar fornecedores. Volte ao passo de segurança e defina uma senha, ou adicione fornecedores mais tarde no painel."
   },
   "providers": {
+    "codexReleaseCooldown": "Clear local cooldown",
+    "codexReleaseCooldownHint": "Allow this Codex account to be tried again. Does not redeem a reset credit or change upstream limits.",
+    "codexReleasingCooldown": "Clearing…",
+    "codexCooldownReleased": "Local cooldown cleared.",
+    "codexCooldownReleaseFailed": "Could not clear cooldown. Please try again.",
     "title": "Provedores",
     "Account Deactivated": "Conta Desativada",
     "allProviders": "Todos os provedores",

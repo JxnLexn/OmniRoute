@@ -1,3 +1,4 @@
+import { getAllProviderLimitsCache } from "@/lib/db/providerLimits";
 import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 import { getAuditRequestContext, logAuditEvent } from "@/lib/compliance/index";
@@ -66,6 +67,10 @@ export async function GET(request: Request) {
     const total = getProviderConnectionsCount(filter);
     const revealKeys = isApiKeyRevealEnabled();
 
+    const quotaCache = connections.some((c) => c.provider === "codex")
+      ? getAllProviderLimitsCache()
+      : {};
+
     // Hide or mask sensitive fields
     const safeConnections = connections.map((c) => {
       const providerSpecificData = c.providerSpecificData
@@ -86,7 +91,8 @@ export async function GET(request: Request) {
                   provider: c.provider,
                   providerSpecificData: c.providerSpecificData ?? {},
                 },
-                Date.now()
+                Date.now(),
+                quotaCache[c.id]
               ),
             }
           : {}),
