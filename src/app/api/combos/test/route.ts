@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { buildComboTestRequestBody, extractComboTestResponseText } from "@/lib/combos/testHealth";
+import { buildComboTestRequestBody } from "@/lib/combos/testHealth";
+import {
+  DEFAULT_MODEL_TEST_TIMEOUT_MS,
+  extractModelTestResponseText,
+  extractProviderErrorMessage,
+  resolveModelTestTimeoutMs,
+} from "@/lib/api/modelTestRunner";
 import { getComboByName, getCombos, pickApiKeyForInternalUse } from "@/lib/localDb";
 import { getRuntimePorts } from "@/lib/runtime/ports";
 import { resolveNestedComboTargets } from "@omniroute/open-sse/services/combo.ts";
@@ -30,6 +36,9 @@ function buildComboTestResult(target, partial = {}) {
 
 async function testComboTarget(target, baseInternalUrl, internalApiKey: string | null) {
   const startTime = Date.now();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  let timeoutMs = DEFAULT_MODEL_TEST_TIMEOUT_MS;
   try {
     // Issue #2359: combo entries with a malformed/missing modelStr surfaced
     // as `e.startsWith is not a function` / similar TypeError 500s. Coerce
@@ -49,43 +58,52 @@ async function testComboTarget(target, baseInternalUrl, internalApiKey: string |
       modelLower.includes("bge-") ||
       modelLower.includes("text-embed");
     const internalUrl = `${baseInternalUrl}/v1/${isEmbedding ? "embeddings" : "chat/completions"}`;
-    const testBody = buildComboTestRequestBody(modelStr, isEmbedding);
+    const testBody = buildComboTestRequestBody(modelStr, isEmbedding, { stream: !isEmbedding });
+    const provider = target.provider || modelStr.split("/")[0];
+    timeoutMs = resolveModelTestTimeoutMs(
+      provider,
+      modelStr,
+      provider === "nvidia" ? 180_000 : DEFAULT_MODEL_TEST_TIMEOUT_MS
+    );
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
 
-    let res;
-    try {
-      res = await fetch(internalUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(internalApiKey ? { Authorization: `Bearer ${internalApiKey}` } : {}),
-          "X-Internal-Test": "combo-health-check",
-          // Force a fresh execution path so combo tests cannot be satisfied by
-          // OmniRoute's semantic cache or other request reuse layers.
-          "X-OmniRoute-No-Cache": "true",
-          ...(target.connectionId ? { "X-OmniRoute-Connection": target.connectionId } : {}),
-          "X-Request-Id": `combo-test-${randomUUID()}`,
-        },
-        body: JSON.stringify(testBody),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    const latencyMs = Date.now() - startTime;
+    const res = await fetch(internalUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(internalApiKey ? { Authorization: `Bearer ${internalApiKey}` } : {}),
+        "X-Internal-Test": "combo-health-check",
+        // Force a fresh execution path so combo tests cannot be satisfied by
+        // OmniRoute's semantic cache or other request reuse layers.
+        "X-OmniRoute-No-Cache": "true",
+        "X-OmniRoute-Compression": "off",
+        ...(target.connectionId ? { "X-OmniRoute-Connection": target.connectionId } : {}),
+        "X-Request-Id": `combo-test-${randomUUID()}`,
+      },
+      body: JSON.stringify(testBody),
+      signal: controller.signal,
+    });
 
     if (res.ok) {
-      let responseBody = null;
-      try {
-        responseBody = await res.json();
-      } catch {
-        responseBody = null;
+      const parsed = await extractModelTestResponseText(res, !isEmbedding);
+      if (timedOut) {
+        throw new Error("Model test deadline exceeded");
       }
-
-      const responseText = extractComboTestResponseText(responseBody);
+      const latencyMs = Date.now() - startTime;
+      if (parsed.error) {
+        return buildComboTestResult(target, {
+          status: "error",
+          statusCode: parsed.error.statusCode,
+          error: sanitizeErrorMessage(parsed.error.message),
+          latencyMs,
+        });
+      }
+      const responseText = parsed.text;
       if (!responseText) {
         return buildComboTestResult(target, {
           status: "error",
@@ -101,7 +119,7 @@ async function testComboTarget(target, baseInternalUrl, internalApiKey: string |
     let errorMsg = "";
     try {
       const errBody = await res.json();
-      errorMsg = errBody?.error?.message || errBody?.error || res.statusText;
+      errorMsg = extractProviderErrorMessage(errBody, res.statusText);
     } catch {
       errorMsg = res.statusText;
     }
@@ -109,16 +127,24 @@ async function testComboTarget(target, baseInternalUrl, internalApiKey: string |
     return buildComboTestResult(target, {
       status: "error",
       statusCode: res.status,
-      error: errorMsg,
-      latencyMs,
+      error: sanitizeErrorMessage(errorMsg),
+      latencyMs: Date.now() - startTime,
     });
   } catch (error) {
     const latencyMs = Date.now() - startTime;
     return buildComboTestResult(target, {
       status: "error",
-      error: error.name === "AbortError" ? "Timeout (20s)" : sanitizeErrorMessage(error.message),
+      ...(timedOut ? { statusCode: 504, isTimeout: true } : {}),
+      error: timedOut
+        ? `No model output within ${Math.round(timeoutMs / 1000)}s`
+        : error.name === "AbortError"
+          ? "Model test aborted"
+          : sanitizeErrorMessage(error.message),
       latencyMs,
     });
+  } finally {
+    // Keep the deadline alive through SSE/JSON body consumption, not just headers.
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -176,6 +202,7 @@ export async function POST(request) {
     return NextResponse.json({
       comboName,
       strategy: combo.strategy || "priority",
+      testMode: "parallel-health-check",
       resolvedBy,
       resolvedByExecutionKey: resolvedResult?.executionKey || null,
       resolvedByTarget: resolvedResult
