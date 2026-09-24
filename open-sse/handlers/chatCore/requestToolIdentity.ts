@@ -23,7 +23,7 @@ export function toToolNameAliasMap(
 
 /**
  * Extract the #7936 request-tool identity map from the translated body and
- * strip both side channels before dispatch.
+ * consume namespace metadata while preserving the provider alias channel.
  *
  * #9780 — prefer the dedicated `_namespaceToolIdentityMap`: on a pivot the
  * openai->claude/gemini step publishes its own alias `Map<string, string>` on
@@ -42,6 +42,9 @@ export function extractRequestToolIdentityMap(
         ? translatedBody._toolNameMap
         : null;
   delete translatedBody._namespaceToolIdentityMap;
-  delete translatedBody._toolNameMap;
+  // A pivot can carry both ledgers. chatCore consumes the provider aliases next.
+  if (!toToolNameAliasMap(translatedBody._toolNameMap as Map<string, unknown>)) {
+    delete translatedBody._toolNameMap;
+  }
   return requestToolIdentityMap as Map<string, NamespaceIdentity> | null;
 }

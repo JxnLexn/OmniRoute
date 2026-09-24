@@ -1,3 +1,4 @@
+import { resolveRequestToolIdentity } from "../translator/response/openai-responses/requestToolIdentity.ts";
 import { appendToolCallArgumentDelta } from "../utils/toolCallArguments.ts";
 import { shouldParseTextualReasoningTags } from "../handlers/responseSanitizer.ts";
 import { getReadableReasoningValue } from "../utils/reasoningFields.ts";
@@ -192,9 +193,14 @@ export function createResponsesLogger(model, logsDir = null) {
 export function createResponsesApiTransformStream(
   logger = null,
   keepaliveIntervalMs = 3000,
-  options: { customToolNames?: Iterable<string> } = {}
+  options: {
+    customToolNames?: Iterable<string>;
+    requestToolIdentityMap?: Map<string, { namespace: string; name: string }> | null;
+  } = {}
 ) {
   const customToolNames = new Set(options.customToolNames || []);
+  const toolIdentity = (name: string) =>
+    resolveRequestToolIdentity(options.requestToolIdentityMap, name) ?? { name };
   const state = {
     seq: 0,
     responseId: `resp_${Date.now()}`,
@@ -437,7 +443,7 @@ export function createResponsesApiTransformStream(
         type: itemType,
         ...(customTool ? { input: "" } : { arguments: "" }),
         call_id: state.funcCallIds[idx],
-        name: state.funcNames[idx] || "",
+        ...toolIdentity(state.funcNames[idx] || ""),
         ...(customTool ? { status: "in_progress" } : {}),
       },
     });
@@ -503,7 +509,7 @@ export function createResponsesApiTransformStream(
           type: "custom_tool_call",
           input: rawInput,
           call_id: callId,
-          name: toolName,
+          ...toolIdentity(toolName),
           status: "completed",
         };
       } else {
@@ -518,7 +524,7 @@ export function createResponsesApiTransformStream(
           type: "function_call",
           arguments: args,
           call_id: callId,
-          name: toolName,
+          ...toolIdentity(toolName),
         };
       }
 

@@ -1,3 +1,4 @@
+import { extractRequestToolIdentityMap } from "./chatCore/requestToolIdentity.ts";
 import { CORS_HEADERS } from "../utils/cors.ts";
 /**
  * Responses API Handler for Workers
@@ -47,6 +48,8 @@ export async function handleResponsesCore({
     modelInfo?.model
   );
 
+  const requestToolIdentityMap = extractRequestToolIdentityMap(convertedBody);
+
   // Ensure stream is enabled
   convertedBody.stream = true;
 
@@ -86,7 +89,10 @@ export async function handleResponsesCore({
   }
 
   // Transform SSE stream to Responses API format (no logging in worker)
-  const transformStream = createResponsesApiTransformStream(null, undefined, { customToolNames });
+  const transformStream = createResponsesApiTransformStream(null, undefined, {
+    customToolNames,
+    requestToolIdentityMap,
+  });
   const transformedBody = response.body.pipeThrough(transformStream).pipeThrough(
     createSseHeartbeatTransform({
       signal,
