@@ -1,1 +1,1 @@
-Claude model import now queries the authenticated Anthropic Models API, including newly released models without a registry update. OAuth and API-key connections support pagination and cache persistence; unavailable or incomplete catalogs retain the previous catalog with an explicit fallback warning.
+Claude model discovery now follows Anthropic's has_more/last_id pagination and preserves published input/output token limits. Empty, malformed, failed or incomplete responses retain the previous catalog with an explicit fallback warning instead of replacing it with partial data.
