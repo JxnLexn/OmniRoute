@@ -1,0 +1,1 @@
+Claude model import now queries the authenticated Anthropic Models API, including newly released models without a registry update. OAuth and API-key connections support pagination and cache persistence; unavailable or incomplete catalogs retain the previous catalog with an explicit fallback warning.

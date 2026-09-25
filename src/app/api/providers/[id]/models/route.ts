@@ -131,6 +131,7 @@ import {
   fetchCodexDiscoveryModels,
   fetchCodexGithubCatalogModels,
 } from "./discovery/codex";
+import { fetchClaudeDiscoveryModels } from "./discovery/claude";
 import { maybeHandleConolModelDiscovery } from "./conolDiscovery";
 import { buildNoAuthModelsResponse, filterModelsForRoute } from "./modelRouteProjection";
 
@@ -1296,11 +1297,36 @@ export async function GET(
     }
 
     if (provider === "claude") {
-      return buildResponse({
-        provider,
-        connectionId,
-        models: getStaticModelsForProvider("claude") || [],
-      });
+      const cachedResponse = maybeReturnCachedDiscovery();
+      if (cachedResponse) return cachedResponse;
+      const disabledResponse = maybeReturnAutoFetchDisabled();
+      if (disabledResponse) return disabledResponse;
+      try {
+        const models = await fetchClaudeDiscoveryModels({
+          accessToken,
+          apiKey,
+          fetchImpl: (url, init) =>
+            safeOutboundFetch(url, {
+              ...SAFE_OUTBOUND_FETCH_PRESETS.modelsDiscovery,
+              guard: getProviderOutboundGuard(),
+              proxyConfig: proxy,
+              ...init,
+            }),
+        });
+        return await buildApiDiscoveryResponse(models);
+      } catch (error) {
+        const detail =
+          error instanceof Error &&
+          /^Claude model discovery failed \(HTTP \d{3}\)$/.test(error.message)
+            ? ` (${error.message})`
+            : "";
+        const fallback = buildDiscoveryErrorFallbackResponse(error, {
+          cacheWarning: `Claude API unavailable${detail} — using cached catalog`,
+          localWarning: `Claude API unavailable${detail} — using local catalog`,
+        });
+        if (fallback) return fallback;
+        throw error;
+      }
     }
 
     if (provider === "raycast") {
