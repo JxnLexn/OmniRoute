@@ -1,4 +1,3 @@
-import "./disableAdobeBrowser.ts";
 // Test-only DATA_DIR isolation.
 //
 // Loaded via `node --import ./tests/_setup/isolateDataDir.ts` from the test/mutation
