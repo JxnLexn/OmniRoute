@@ -34,4 +34,4 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Verify live discovery and cache behavior
-        run: node --import tsx/esm --test tests/unit/claude-model-discovery.test.ts tests/unit/claude-model-discovery-route.test.ts tests/unit/adobe-firefly.test.ts tests/unit/8510-adobe-firefly-edits-route.test.ts
+        run: node --import tsx/esm --test tests/unit/claude-model-discovery.test.ts tests/unit/claude-model-discovery-route.test.ts tests/unit/claude-client-version-env.test.ts tests/unit/adobe-firefly.test.ts tests/unit/8510-adobe-firefly-edits-route.test.ts

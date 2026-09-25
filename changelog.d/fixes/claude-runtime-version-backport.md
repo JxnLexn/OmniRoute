@@ -1,0 +1,1 @@
+Backport the Claude portion of upstream #12632: CLAUDE_CODE_CLIENT_VERSION now controls inference, billing, bootstrap, usage and compatible-client identity consistently, so a deployment can satisfy new model version gates without changing captured defaults.
