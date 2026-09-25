@@ -1,0 +1,37 @@
+name: Claude Model Discovery Regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/app/api/providers/**"
+      - "tests/unit/claude-model-discovery*.test.ts"
+      - "tests/unit/*adobe-firefly*.test.ts"
+      - "tests/_setup/**"
+      - ".github/workflows/claude-model-discovery.yml"
+  pull_request:
+    paths:
+      - "src/app/api/providers/**"
+      - "tests/unit/claude-model-discovery*.test.ts"
+      - "tests/unit/*adobe-firefly*.test.ts"
+      - "tests/_setup/**"
+      - ".github/workflows/claude-model-discovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Verify live discovery and cache behavior
+        run: node --import tsx/esm --test tests/unit/claude-model-discovery.test.ts tests/unit/claude-model-discovery-route.test.ts tests/unit/adobe-firefly.test.ts tests/unit/8510-adobe-firefly-edits-route.test.ts
