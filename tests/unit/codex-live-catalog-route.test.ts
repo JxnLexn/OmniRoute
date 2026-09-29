@@ -108,6 +108,24 @@ test("the public Codex catalog does not reintroduce static-only IDs after live s
   const body = (await response.json()) as { data: Array<{ id: string }> };
   const ids = new Set(body.data.map((model) => model.id));
   assert.ok(ids.has("cx/codex-live-public"));
+  assert.ok(!ids.has("cx/auto"));
+  assert.ok(!ids.has("cx/auto-cost"));
   assert.ok(!ids.has("cx/gpt-5.6-sol"));
   assert.ok(!ids.has("cx/gpt-5.3-codex-spark"));
+});
+
+test("Codex dashboard rows preserve ownership and never gain Cursor auto aliases", async () => {
+  const { mergeProviderModelListing } =
+    await import("../../src/lib/providers/mergeProviderModelListing.ts");
+  const rows = mergeProviderModelListing({
+    providerId: "codex",
+    registryModels: [{ id: "stale" }],
+    syncedModels: [{ id: "codex-live" }],
+    customModels: [],
+  });
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["codex-live"]
+  );
+  assert.equal(rows[0].owned_by, "codex");
 });
