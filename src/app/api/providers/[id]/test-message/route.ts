@@ -58,7 +58,7 @@ export async function PUT(request: Request, context: Context) {
     if (!connection) return errorResponse("Connection not found", 404);
     await updateProviderConnection(id, {
       providerSpecificData: {
-        ...(connection.providerSpecificData || {}),
+        ...((connection.providerSpecificData as Record<string, unknown> | undefined) || {}),
         connectionTestModel: parsed.data.modelId,
       },
     });
@@ -95,7 +95,8 @@ export async function POST(request: Request, context: Context) {
     ) {
       return errorResponse("Paid model blocked while hidePaidModels is enabled", 403);
     }
-    const prompt = settings.connectionTestPrompt || DEFAULT_CONNECTION_TEST_PROMPT;
+    const prompt =
+      (settings.connectionTestPrompt as string | undefined) || DEFAULT_CONNECTION_TEST_PROMPT;
     const result = await runSingleModelTest({
       providerId: provider,
       modelId: `${provider}/${upstreamModel}`,
