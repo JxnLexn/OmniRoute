@@ -44,6 +44,8 @@ describe("providerLacksModelListing (#5420)", () => {
 
 describe("providerUsesExclusiveSyncedListing", () => {
   it("is true only for Cursor (id or alias)", () => {
+    assert.equal(providerUsesExclusiveSyncedListing("codex"), true);
+    assert.equal(providerUsesExclusiveSyncedListing("cx"), true);
     assert.equal(providerUsesExclusiveSyncedListing("cursor"), true);
     assert.equal(providerUsesExclusiveSyncedListing("cu"), true);
     assert.equal(providerUsesExclusiveSyncedListing("Cursor"), true);
