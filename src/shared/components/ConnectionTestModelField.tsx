@@ -23,8 +23,6 @@ export default function ConnectionTestModelField({
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setFailed(false);
     const base = `/api/providers/${encodeURIComponent(connectionId)}`;
     const read = async (path: string) => {
       const response = await fetch(base + path, { signal: controller.signal });
