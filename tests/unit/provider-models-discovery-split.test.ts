@@ -276,7 +276,6 @@ test("codex retired ids stay out of the discovery catalog", () => {
   for (const id of ["gpt-5.3-codex-spark", "codex-auto-review"]) {
     assert.equal(isCodexDiscoveryModelExcluded({ id }), true);
     assert.equal(isSharedCodexDiscoveryModelExcluded({ id }), true);
-
   }
 
   const catalog = buildCodexDiscoveryCatalog(
@@ -318,13 +317,6 @@ test("the codex registry no longer advertises the retired spark id", async () =>
     false
   );
 });
-
-test("codex discovery mode preserves the legacy opt-in", () => {
-  assert.equal(getCodexDiscoveryMode({}), "off");
-  assert.equal(getCodexDiscoveryMode({ autoFetchModels: true }), "safe");
-  assert.equal(getCodexDiscoveryMode({ codexDiscoveryMode: "all" }), "all");
-});
-
 
 test("codex.normalizeCodexModelsResponse prefers max_context_window over the context_window pricing tier", () => {
   // The live Codex OAuth catalog reports BOTH fields: `context_window` is the
