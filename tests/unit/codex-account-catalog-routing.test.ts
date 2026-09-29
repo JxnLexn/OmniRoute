@@ -159,3 +159,34 @@ test("Codex preserves bootstrap selection when no account has a synced catalog",
     id
   );
 });
+
+test("Codex forced and API-key restricted selection cannot bypass the account inventory", async () => {
+  await resetStorage();
+  const { plusId } = await seedTwoAccounts();
+  const restricted = await auth.getProviderCredentials(
+    PROVIDER,
+    null,
+    [plusId],
+    "gpt-pro-only-test"
+  );
+  assert.equal(selectedConnectionId(restricted), null);
+  const pinned = await auth.getProviderCredentials(PROVIDER, null, null, "gpt-pro-only-test", {
+    forcedConnectionId: plusId,
+  });
+  assert.equal(selectedConnectionId(pinned), null);
+});
+
+test("the public catalog keeps the union of active Codex account inventories", async () => {
+  await resetStorage();
+  await seedTwoAccounts();
+  const catalog = await import("../../src/app/api/v1/models/catalog.ts");
+  catalog.__resetCatalogBuilderRunsForTest();
+  const response = await catalog.getUnifiedModelsResponse(
+    new Request("http://localhost/api/v1/models")
+  );
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { data: Array<{ id: string }> };
+  const ids = new Set(body.data.map((model) => model.id));
+  assert.ok(ids.has("cx/gpt-pro-only-test"));
+  assert.ok(ids.has("cx/gpt-shared-test"));
+});
