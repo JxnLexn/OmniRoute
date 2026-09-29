@@ -2256,7 +2256,9 @@ export async function GET(
           githubCatalogModels && githubCatalogModels.length > 0
             ? enrichCodexModelsFromGithubCatalog(liveModels, githubCatalogModels)
             : liveModels;
-        return buildApiDiscoveryResponse(finalizeCodexCatalog(enrichedLiveModels));
+        const models = finalizeCodexCatalog(enrichedLiveModels);
+        await persistDiscoveredModels(provider, connectionId, models);
+        return buildResponse({ provider, connectionId, models, source: "api" });
       }
 
       if (cachedDiscoveryModels.length > 0) {

@@ -83,3 +83,12 @@ test("unsynchronized accounts retain an explicit static fallback with auto-fetch
   assert.equal(fallback.source, "local_catalog");
   assert.ok(fallback.models.length > 0);
 });
+
+test("a live catalog containing only retired models does not resurrect static models", async () => {
+  const c = await connection();
+  globalThis.fetch = async () =>
+    Response.json({ models: [{ slug: "gpt-5.4", visibility: "list", supported_in_api: true }] });
+  const body = await call(c.id);
+  assert.equal(body.source, "api");
+  assert.deepEqual(ids(body), []);
+});
