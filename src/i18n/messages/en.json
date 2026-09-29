@@ -14459,6 +14459,8 @@
     "failed": "The request failed. Please try again.",
     "settingsTitle": "Manual account test messages",
     "settingsDescription": "This message is used by the test buttons under Connections and Provider Quota. Choose the model separately for each account. Saving does not send a message or enable automatic pings.",
-    "saveMessage": "Save message"
+    "saveMessage": "Save message",
+    "defaultModel": "Default test model",
+    "defaultModelHint": "Used automatically by the Test message buttons for this account. Saved with the connection; no message is sent."
   }
 }
