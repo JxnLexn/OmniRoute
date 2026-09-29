@@ -2111,7 +2111,12 @@ export async function GET(
             ? enrichCodexModelsFromGithubCatalog(liveModels, githubCatalogModels)
             : liveModels;
         const catalog = reconcileCodexCatalog(enrichedLiveModels);
-        return buildApiDiscoveryResponse(catalog.activeModels, undefined, {
+        await persistDiscoveredModels(provider, connectionId, catalog.activeModels);
+        return buildResponse({
+          provider,
+          connectionId,
+          models: catalog.activeModels,
+          source: "api",
           discovery: { mode: codexDiscoveryMode },
           ...(includeCandidates ? { candidateModels: catalog.candidateModels } : {}),
         });
