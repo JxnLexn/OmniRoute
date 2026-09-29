@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **fix(oauth):** Replace both token expiry fields on reauthentication and clear stale OAuth errors, preventing an immediate background refresh from disabling a freshly signed-in account.
+
 ### ✨ New Features
 
 - **feat(sse): STRICT_ZERO_COST** — opt-in, off-by-default `freeAccessPolicy: "strict"` setting
