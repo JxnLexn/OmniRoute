@@ -211,3 +211,31 @@ test("failed selected account never falls back to another account", async () => 
   assert.equal(calls, 1);
   assert.equal((await db.getProviderConnectionById(selected.id))?.isActive, true);
 });
+
+test("Edit Connection persists, preserves and clears the shared test model", async () => {
+  const editRoute = await import("../../src/app/api/providers/[id]/route.ts");
+  const selected = await connection("sk-edit-connection-test", {
+    providerSpecificData: { connectionTestModel: "original", workspaceId: "keep" },
+  });
+  globalThis.fetch = async () => {
+    throw new Error("Saving connection settings must not generate");
+  };
+  const save = async (providerSpecificData: Record<string, unknown>) => {
+    const response = await editRoute.PUT(
+      await makeManagementSessionRequest(`http://localhost/api/providers/${selected.id}`, {
+        method: "PUT",
+        body: { providerSpecificData },
+      }),
+      context(selected.id)
+    );
+    assert.equal(response.status, 200);
+    return (await route.GET(await request(selected.id, "GET"), context(selected.id))).json();
+  };
+  assert.equal((await save({ connectionTestModel: "gpt-4o-mini" })).modelId, "gpt-4o-mini");
+  assert.equal((await save({ tag: "changed" })).modelId, "gpt-4o-mini");
+  assert.equal(
+    (await db.getProviderConnectionById(selected.id))?.providerSpecificData.workspaceId,
+    "keep"
+  );
+  assert.equal((await save({ connectionTestModel: null })).modelId, "");
+});
