@@ -92,3 +92,22 @@ test("a live catalog containing only retired models does not resurrect static mo
   assert.equal(body.source, "api");
   assert.deepEqual(ids(body), []);
 });
+
+test("the public Codex catalog does not reintroduce static-only IDs after live sync", async () => {
+  const c = await connection();
+  globalThis.fetch = async () =>
+    Response.json({
+      models: [{ slug: "codex-live-public", visibility: "list", supported_in_api: true }],
+    });
+  await call(c.id);
+  const catalog = await import("../../src/app/api/v1/models/catalog.ts");
+  catalog.__resetCatalogBuilderRunsForTest();
+  const response = await catalog.getUnifiedModelsResponse(
+    new Request("http://localhost/api/v1/models")
+  );
+  const body = (await response.json()) as { data: Array<{ id: string }> };
+  const ids = new Set(body.data.map((model) => model.id));
+  assert.ok(ids.has("cx/codex-live-public"));
+  assert.ok(!ids.has("cx/gpt-5.6-sol"));
+  assert.ok(!ids.has("cx/gpt-5.3-codex-spark"));
+});
