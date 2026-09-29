@@ -11,6 +11,8 @@ const { default: ConnectionTestSettings } =
   await import("../../../src/app/(dashboard)/dashboard/settings/components/ConnectionTestSettings");
 const { default: QuotaCardExpanded } =
   await import("../../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/parts/QuotaCardExpanded");
+const { default: EditConnectionModal } =
+  await import("../../../src/app/(dashboard)/dashboard/providers/[id]/components/modals/EditConnectionModal");
 let root: Root;
 let container: HTMLDivElement;
 let calls: Array<{ url: string; method: string; body?: string }>;
@@ -198,3 +200,109 @@ it.runIf(process.env.RUN_QUOTA_LAYOUT === "1")(
   },
   65_000
 );
+
+it.each(["oauth", "apikey"])(
+  "connection settings persist the chosen test model for %s accounts only on Save",
+  async (authType) => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const connection = {
+      id: "account-a",
+      provider: "openai",
+      authType,
+      name: "Account A",
+      providerSpecificData: { connectionTestModel: "old", tag: "keep" },
+    };
+    await act(async () =>
+      root.render(
+        <EditConnectionModal
+          isOpen
+          connection={connection}
+          providerId="openai"
+          onSave={onSave}
+          onClose={onClose}
+        />
+      )
+    );
+    const label = [...container.querySelectorAll("label")].find(
+      (l) => l.textContent === "translated:defaultModel"
+    )!;
+    const select = document.getElementById(label.htmlFor) as HTMLSelectElement;
+    expect(select.value).toBe("small"); // fresh API value, not the stale connection snapshot
+    act(() => {
+      select.value = "large";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onSave).not.toHaveBeenCalled();
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+    await act(async () => button("save").click());
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onSave.mock.calls[0][0].providerSpecificData.connectionTestModel).toBe("large");
+    expect(onSave.mock.calls[0][0].providerSpecificData.tag).toBe("keep");
+  }
+);
+it("saving unrelated connection settings preserves newer server-side test model and Cancel discards selection", async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined),
+    onClose = vi.fn();
+  const connection = {
+    id: "account-a",
+    provider: "openai",
+    authType: "oauth",
+    providerSpecificData: { connectionTestModel: "stale" },
+  };
+  const render = (isOpen: boolean) =>
+    root.render(
+      <EditConnectionModal
+        isOpen={isOpen}
+        connection={connection}
+        providerId="openai"
+        onSave={onSave}
+        onClose={onClose}
+      />
+    );
+  await act(async () => render(true));
+  await act(async () => button("save").click());
+  expect(onSave.mock.calls[0][0].providerSpecificData).not.toHaveProperty("connectionTestModel");
+  const label = [...container.querySelectorAll("label")].find(
+    (l) => l.textContent === "translated:defaultModel"
+  )!;
+  const select = document.getElementById(label.htmlFor) as HTMLSelectElement;
+  act(() => {
+    select.value = "large";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  act(() => button("cancel").click());
+  expect(onSave).toHaveBeenCalledOnce();
+  await act(async () => render(false));
+  await act(async () => render(true));
+  const freshLabel = [...container.querySelectorAll("label")].find(
+    (l) => l.textContent === "translated:defaultModel"
+  )!;
+  expect((document.getElementById(freshLabel.htmlFor) as HTMLSelectElement).value).toBe("small");
+  await act(async () => button("save").click());
+  expect(onSave.mock.calls[1][0].providerSpecificData).not.toHaveProperty("connectionTestModel");
+});
+it("connection settings can clear the default with an explicit null", async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  await act(async () =>
+    root.render(
+      <EditConnectionModal
+        isOpen
+        connection={{ id: "account-a", provider: "openai", authType: "oauth" }}
+        providerId="openai"
+        onSave={onSave}
+        onClose={() => {}}
+      />
+    )
+  );
+  const label = [...container.querySelectorAll("label")].find(
+    (l) => l.textContent === "translated:defaultModel"
+  )!;
+  const select = document.getElementById(label.htmlFor) as HTMLSelectElement;
+  act(() => {
+    select.value = "";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await act(async () => button("save").click());
+  expect(onSave.mock.calls[0][0].providerSpecificData.connectionTestModel).toBeNull();
+});

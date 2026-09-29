@@ -14029,6 +14029,8 @@
     "failed": "Die Anfrage ist fehlgeschlagen. Bitte versuche es erneut.",
     "settingsTitle": "Manuelle Account-Testnachrichten",
     "settingsDescription": "Diese Nachricht verwenden die Testknöpfe unter Connections und Provider Quota. Das Modell wählst du für jeden Account einzeln. Speichern sendet keine Nachricht und aktiviert keine automatischen Pings.",
-    "saveMessage": "Nachricht speichern"
+    "saveMessage": "Nachricht speichern",
+    "defaultModel": "Standardmodell für Testnachrichten",
+    "defaultModelHint": "Wird bei den Testnachrichten dieses Accounts automatisch vorausgewählt. Speichern übernimmt die Auswahl und sendet keine Nachricht."
   }
 }
