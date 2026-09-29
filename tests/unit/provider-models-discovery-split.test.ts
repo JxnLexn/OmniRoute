@@ -272,6 +272,60 @@ test("codex.normalizeCodexModelsResponse parses the Codex live catalog shape", (
   assert.equal(parsed.find((model) => model.id === "gpt-5.5")?.outputTokenLimit, 64000);
 });
 
+test("codex retired ids stay out of the discovery catalog", () => {
+  for (const id of ["gpt-5.3-codex-spark", "codex-auto-review"]) {
+    assert.equal(isCodexDiscoveryModelExcluded({ id }), true);
+    assert.equal(isSharedCodexDiscoveryModelExcluded({ id }), true);
+
+  }
+
+  const catalog = buildCodexDiscoveryCatalog(
+    [
+      {
+        id: "gpt-5.3-codex-spark",
+        name: "GPT 5.3 Codex Spark",
+        owned_by: "codex",
+        apiFormat: "responses",
+        supportedEndpoints: ["responses"],
+      },
+      {
+        id: "codex-auto-review",
+        name: "Codex Auto Review",
+        owned_by: "codex",
+        apiFormat: "responses",
+        supportedEndpoints: ["responses"],
+      },
+      {
+        id: "gpt-6-sol",
+        name: "GPT-6-Sol",
+        owned_by: "codex",
+        apiFormat: "responses",
+        supportedEndpoints: ["responses"],
+      },
+    ],
+    []
+  );
+  assert.deepEqual(
+    catalog.map((model) => model.id),
+    ["gpt-6-sol"]
+  );
+});
+
+test("the codex registry no longer advertises the retired spark id", async () => {
+  const { codexProvider } = await import("../../open-sse/config/providers/registry/codex/index.ts");
+  assert.equal(
+    codexProvider.models?.some((model) => model.id === "gpt-5.3-codex-spark"),
+    false
+  );
+});
+
+test("codex discovery mode preserves the legacy opt-in", () => {
+  assert.equal(getCodexDiscoveryMode({}), "off");
+  assert.equal(getCodexDiscoveryMode({ autoFetchModels: true }), "safe");
+  assert.equal(getCodexDiscoveryMode({ codexDiscoveryMode: "all" }), "all");
+});
+
+
 test("codex.normalizeCodexModelsResponse prefers max_context_window over the context_window pricing tier", () => {
   // The live Codex OAuth catalog reports BOTH fields: `context_window` is the
   // first pricing tier (~272K) while `max_context_window` is the real usable
