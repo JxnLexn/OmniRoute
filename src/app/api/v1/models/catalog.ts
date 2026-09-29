@@ -1228,7 +1228,7 @@ async function buildUnifiedModelsResponseCore(
           continue;
         }
 
-        for (const sm of providerUsesExclusiveSyncedListing(providerId)
+        for (const sm of ["cursor", "cu"].includes(providerId.trim().toLowerCase())
           ? ensureCursorAutoCatalogEntry(
               syncedModels.map((row) => ({
                 ...row,
