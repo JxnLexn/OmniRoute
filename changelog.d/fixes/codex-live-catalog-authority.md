@@ -1,0 +1,1 @@
+Codex discovery treats remote model IDs as authoritative and uses static entries only for metadata or an explicit offline fallback. Failed refreshes prefer the last account catalog over the generic GitHub manifest.
