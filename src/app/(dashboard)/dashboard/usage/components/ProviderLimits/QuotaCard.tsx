@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Card from "@/shared/components/Card";
+import { ChatGptUsageSummary } from "@/shared/components/ChatGptPlanUi";
+import { hasChatGptUsageLimit } from "@/shared/utils/chatgptPlanUi";
 import {
   isProviderBillingProvider,
   type ProviderBillingStatus,
@@ -148,6 +150,9 @@ export default function QuotaCard({
         togglingActive={togglingActive}
         onTestSent={onRefresh}
       />
+      {connection.provider === "chatgpt" && (
+        <ChatGptUsageSummary limitReached={hasChatGptUsageLimit(connection)} />
+      )}
       <QuotaCardExpanded
         quotas={quotas}
         providerId={connection.provider}

@@ -5,6 +5,8 @@ import { parseChatGptManualCallback } from "@/shared/utils/chatgptCallback";
 import Modal from "./Modal";
 import Button from "./Button";
 import ChatGptSignInButton from "./ChatGptSignInButton";
+import { ChatGptPlanWelcome } from "./ChatGptPlanUi";
+import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils/chatgptPlanUi";
 
 type Props = {
   isOpen: boolean;
@@ -37,6 +39,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
   const stateRef = useRef<string | null>(null);
   const generation = useRef(0);
   const [done, setDone] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const connectionId = reauthConnection?.id;
 
   const start = useCallback(async () => {
@@ -95,6 +98,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
       });
       if (current !== generation.current) return;
       stateRef.current = null;
+      setShowWelcome(shouldWelcomeChatGptPlan(!!connectionId));
       setDone(true);
       setWarning(result.warning || "");
     } catch (err) {
@@ -105,28 +109,42 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
     }
   }
 
+  function finish() {
+    if (showWelcome) acknowledgeChatGptPlan();
+    onSuccess();
+  }
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={done ? finish : onClose}
       title="Connect ChatGPT"
       size="full"
       className="max-h-[90vh] overflow-y-auto"
     >
       <div className="space-y-6">
-        <p className="text-text-muted">
-          Official Sign in with ChatGPT · Preview. Uses your ChatGPT plan through the public OpenAI
-          API. This is separate from the Codex provider and does not grant access to your chats.
-        </p>
-        <p className="rounded-lg border border-border p-3 text-sm">
-          For your personal, self-hosted instance. OpenAI eligibility and app-specific usage limits
-          apply. Shared or commercial services may require separate approval.
-        </p>
+        {!done && (
+          <>
+            <p className="text-text-muted">
+              Official Sign in with ChatGPT · Preview. Uses your ChatGPT plan through the public
+              OpenAI API. This is separate from the Codex provider and does not grant access to your
+              chats.
+            </p>
+            <p className="rounded-lg border border-border p-3 text-sm">
+              For your personal, self-hosted instance. OpenAI eligibility and app-specific usage
+              limits apply. Shared or commercial services may require separate approval.
+            </p>
+          </>
+        )}
         {done ? (
           <div className="space-y-4">
             <p role="status">ChatGPT is connected.</p>
             {warning && <p className="rounded-lg border border-amber-500 p-3">{warning}</p>}
-            <Button onClick={onSuccess}>Done</Button>
+            {showWelcome ? (
+              <ChatGptPlanWelcome onDismiss={finish} />
+            ) : (
+              <Button onClick={finish}>Done</Button>
+            )}
           </div>
         ) : (
           <>
@@ -137,9 +155,16 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
                 open.
               </p>
               {attempt ? (
-                <ChatGptSignInButton href={attempt.authUrl} />
+                <ChatGptSignInButton
+                  intent={connectionId ? "continue" : "signin"}
+                  href={attempt.authUrl}
+                />
               ) : (
-                <ChatGptSignInButton busy={busy} disabled />
+                <ChatGptSignInButton
+                  intent={connectionId ? "continue" : "signin"}
+                  busy={busy}
+                  disabled
+                />
               )}
             </section>
             <section className="space-y-3">
