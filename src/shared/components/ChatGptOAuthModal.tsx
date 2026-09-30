@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
+import ChatGptSignInButton from "./ChatGptSignInButton";
 
 type Props = {
   isOpen: boolean;
@@ -198,19 +199,14 @@ function ChatGptOAuthDialog({
                 click Continue to OmniRoute to finish. No tokens need to be copied.
               </p>
               {!attempt ? (
-                <Button onClick={start} disabled={busy || port < 1024 || port > 65535}>
-                  {busy ? "Preparing sign-in…" : "Prepare ChatGPT sign-in"}
-                </Button>
+                <ChatGptSignInButton
+                  onClick={start}
+                  busy={busy}
+                  disabled={port < 1024 || port > 65535}
+                />
               ) : (
                 <>
-                  <a
-                    className="inline-block rounded-lg bg-primary px-5 py-3 text-white"
-                    href={attempt.authUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Continue with ChatGPT
-                  </a>
+                  <ChatGptSignInButton href={attempt.authUrl} />
                   <p role="status" className="text-sm text-text-muted">
                     Waiting for sign-in. This attempt expires after 10 minutes.
                   </p>
