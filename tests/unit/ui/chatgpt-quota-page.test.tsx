@@ -5,6 +5,17 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import ProviderLimits from "@/app/(dashboard)/dashboard/usage/components/ProviderLimits";
 
+vi.mock("@/store/emailPrivacyStore", () => ({
+  default: (select: (state: { emailsVisible: boolean }) => unknown) =>
+    select({ emailsVisible: false }),
+}));
+vi.mock("@/store/notificationStore", () => ({
+  useNotificationStore: () => ({ success: vi.fn(), error: vi.fn() }),
+}));
+vi.mock("@/shared/hooks/useTheme", () => ({
+  useTheme: () => ({ theme: "light", isDark: false }),
+}));
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
