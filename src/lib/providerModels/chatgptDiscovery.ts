@@ -18,6 +18,17 @@ const catalogSchema = z.object({
   ),
 });
 
+export class ChatGptDiscoveryError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public requiresReauth = false
+  ) {
+    super(message);
+    this.name = "ChatGptDiscoveryError";
+  }
+}
+
 export function parseChatGptModels(payload: unknown) {
   return catalogSchema
     .parse(payload)
@@ -35,6 +46,7 @@ export function parseChatGptModels(payload: unknown) {
 
 export async function discoverChatGptModels(connection: Record<string, unknown>) {
   let credentials: Record<string, unknown> = { ...connection, connectionId: connection.id };
+  const proxy = await resolveProxyForConnection(String(connection.id));
   const expiry = typeof connection.expiresAt === "string" ? Date.parse(connection.expiresAt) : 0;
   if (!expiry || expiry < Date.now() + 60_000) {
     const refreshed = await runWithOnPersist(
@@ -45,15 +57,30 @@ export async function discoverChatGptModels(connection: Record<string, unknown>)
           ...(update.expiresAt ? { tokenExpiresAt: update.expiresAt } : {}),
         });
       },
-      () => getAccessToken("chatgpt", credentials, null)
+      () => getAccessToken("chatgpt", credentials, null, proxy.proxy)
     );
-    if (!refreshed || "error" in refreshed)
-      throw new Error("ChatGPT credentials need reauthorization.");
+    if (!refreshed || "error" in refreshed) {
+      if (refreshed?.error === "unrecoverable_refresh_error") {
+        throw new ChatGptDiscoveryError(
+          "ChatGPT credentials were rejected. Please sign in again.",
+          401,
+          true
+        );
+      }
+      throw new ChatGptDiscoveryError(
+        "ChatGPT token refresh is temporarily unavailable. Try again later.",
+        503
+      );
+    }
     credentials = { ...credentials, ...refreshed };
   }
   const data = credentials.providerSpecificData as Record<string, unknown> | undefined;
-  if (!hasChatGptPlanScope(data?.scopes)) throw new Error("ChatGPT plan usage is not authorized.");
-  const proxy = await resolveProxyForConnection(String(connection.id));
+  if (!hasChatGptPlanScope(data?.scopes))
+    throw new ChatGptDiscoveryError(
+      "ChatGPT plan usage is not authorized. Please sign in again.",
+      403,
+      true
+    );
   const response = await runWithProxyContext(proxy.proxy, () =>
     fetch("https://api.openai.com/v1/models", {
       headers: { Authorization: `Bearer ${credentials.accessToken}`, Accept: "application/json" },
@@ -61,7 +88,16 @@ export async function discoverChatGptModels(connection: Record<string, unknown>)
       signal: AbortSignal.timeout(30_000),
     })
   );
-  if (!response.ok) throw new Error(`ChatGPT live catalog unavailable (HTTP ${response.status}).`);
+  if (!response.ok) {
+    const requiresReauth = response.status === 401 || response.status === 403;
+    throw new ChatGptDiscoveryError(
+      requiresReauth
+        ? "ChatGPT authorization was rejected. Please sign in again."
+        : `ChatGPT live catalog unavailable (HTTP ${response.status}).`,
+      response.status,
+      requiresReauth
+    );
+  }
   const models = parseChatGptModels(await response.json());
   await persistDiscoveredModels("chatgpt", String(connection.id), models);
   return models;

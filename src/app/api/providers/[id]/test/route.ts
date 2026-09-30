@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { discoverChatGptModels } from "@/lib/providerModels/chatgptDiscovery";
+import {
+  ChatGptDiscoveryError,
+  discoverChatGptModels,
+} from "@/lib/providerModels/chatgptDiscovery";
 import { z } from "zod";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { getCachedProviderConnectionById } from "@/lib/db/readCache";
@@ -363,9 +366,22 @@ export async function testOAuthConnection(
         refreshed: false,
         diagnosis: makeDiagnosis("ok", "oauth", null, null),
       };
-    } catch {
-      const error = "ChatGPT live catalog unavailable. Check plan authorization or sign in again.";
-      return { valid: false, error, refreshed: false, diagnosis: classifyFailure({ error }) };
+    } catch (cause) {
+      const known = cause instanceof ChatGptDiscoveryError;
+      const error = toSafeMessage(
+        known ? cause.message : "ChatGPT live catalog is temporarily unavailable."
+      );
+      const requiresReauth = (known && cause.requiresReauth) || connection.testStatus === "expired";
+      const statusCode = known ? cause.status : 503;
+      return {
+        valid: false,
+        error,
+        statusCode,
+        refreshed: false,
+        diagnosis: requiresReauth
+          ? makeDiagnosis("token_expired", "oauth", error, "expired")
+          : classifyFailure({ error, statusCode }),
+      };
     }
   }
   const config = OAUTH_TEST_CONFIG[connection.provider];
@@ -1107,6 +1123,8 @@ export async function testSingleConnection(
   const isTerminalFailure =
     !result.valid &&
     terminalTestStatuses.has(String(diagnosis.code ?? diagnosis.type ?? "").toLowerCase());
+  const chatGptReauthRequired =
+    provider === "chatgpt" && !result.valid && diagnosis.code === "expired";
   const testFailureCooldownMs = result.valid ? 0 : 30_000; // 30s retry window
 
   // A successful credential probe proves the KEY is valid. It does NOT prove the
@@ -1125,7 +1143,13 @@ export async function testSingleConnection(
   const lastErrorType = result.valid ? connection.lastErrorType : diagnosis.type;
 
   const updateData: Record<string, any> = {
-    testStatus: clearErrorState ? "active" : result.valid ? connection.testStatus : "error",
+    testStatus: chatGptReauthRequired
+      ? "expired"
+      : clearErrorState
+        ? "active"
+        : result.valid
+          ? connection.testStatus
+          : "error",
     // A passing test is the sole activation signal under the "only advertise tested-working
     // connections" default (POST /api/providers creates connections isActive:false). Only ever
     // flips ON: a failing test leaves isActive untouched (a transient failure must not take a
@@ -1146,13 +1170,14 @@ export async function testSingleConnection(
       : result.valid
         ? connection.errorCode
         : diagnosis.code || result.statusCode || null,
-    rateLimitedUntil: clearErrorState
-      ? null
-      : isTerminalFailure
-        ? connection.rateLimitedUntil || null
-        : result.valid
+    rateLimitedUntil:
+      clearErrorState || chatGptReauthRequired
+        ? null
+        : isTerminalFailure
           ? connection.rateLimitedUntil || null
-          : new Date(Date.now() + testFailureCooldownMs).toISOString(),
+          : result.valid
+            ? connection.rateLimitedUntil || null
+            : new Date(Date.now() + testFailureCooldownMs).toISOString(),
   };
 
   if (clearErrorState) {

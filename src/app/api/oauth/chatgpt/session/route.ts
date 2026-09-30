@@ -167,6 +167,7 @@ export async function POST(request: Request) {
         subject: verified.subject,
         clientId,
         scopes,
+        earliestRefreshAt: tokens.earliest_refresh_at ?? null,
         autoFetchModels: true,
       },
     };

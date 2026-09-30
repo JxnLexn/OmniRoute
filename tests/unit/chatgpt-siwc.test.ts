@@ -33,6 +33,149 @@ test.after(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
+test("ChatGPT refresh respects the one-minute window and upstream earliest refresh time", async (t) => {
+  let calls = 0;
+  const earliest = Math.floor(Date.now() / 1000) + 120;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return Response.json({
+      access_token: "next",
+      refresh_token: "next-refresh",
+      expires_in: 3600,
+      earliest_refresh_at: earliest,
+    });
+  });
+  const credentials = {
+    accessToken: "current",
+    refreshToken: "current-refresh",
+    expiresAt: new Date(Date.now() + 240_000).toISOString(),
+    providerSpecificData: { clientId: "oaiapp_timing", scopes: [CHATGPT_PLAN_SCOPE] },
+  };
+  const early = await refreshChatGptToken(credentials);
+  assert.equal(calls, 0, "do not consume a rotating token five minutes early");
+  assert.ok("accessToken" in early);
+  assert.equal(early.expiresAt, credentials.expiresAt, "reuse must not extend token lifetime");
+  for (const value of [earliest, new Date(earliest * 1000).toISOString()]) {
+    const nearExpiry = {
+      ...credentials,
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      providerSpecificData: { ...credentials.providerSpecificData, earliestRefreshAt: value },
+    };
+    await refreshChatGptToken(nearExpiry);
+    const expired = await refreshChatGptToken({ ...nearExpiry, expiresAt: "2020-01-01T00:00:00Z" });
+    assert.ok("error" in expired);
+    assert.equal(expired.error, "temporary_refresh_error");
+    assert.equal(calls, 0, "never refresh before earliest_refresh_at, even after expiry");
+  }
+  const refreshed = await refreshChatGptToken({
+    ...credentials,
+    expiresAt: "2020-01-01T00:00:00Z",
+  });
+  assert.equal(calls, 1);
+  assert.ok("accessToken" in refreshed);
+  assert.equal(refreshed.providerSpecificData?.earliestRefreshAt, earliest);
+  assert.deepEqual(refreshed.providerSpecificData?.scopes, [CHATGPT_PLAN_SCOPE]);
+});
+
+test("ChatGPT Retest keeps rejected refresh credentials expired without a rate-limit cooldown", async (t) => {
+  const { testSingleConnection } = await import("../../src/app/api/providers/[id]/test/route.ts");
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Retest auth classification",
+    accessToken: "expired",
+    refreshToken: "retest-invalid",
+    expiresAt: "2020-01-01T00:00:00Z",
+    testStatus: "expired",
+    rateLimitedUntil: new Date(Date.now() + 30_000).toISOString(),
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "retest",
+      clientId: "oaiapp_retest",
+      scopes: [CHATGPT_PLAN_SCOPE],
+    },
+  });
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ error: "invalid_grant", detail: "secret-must-not-leak" }, { status: 400 })
+  );
+  const result = await testSingleConnection(connection.id);
+  assert.equal(result.valid, false);
+  assert.equal(result.diagnosis?.code, "expired");
+  const saved = await db.getProviderConnectionById(connection.id);
+  assert.equal(saved.testStatus, "expired");
+  assert.equal(saved.rateLimitedUntil ?? null, null);
+  assert.match(saved.lastError, /sign in again/i);
+  assert.ok(!JSON.stringify(result).includes("secret-must-not-leak"));
+});
+
+test("stale ChatGPT callers reuse persisted refresh timing and scope metadata", async (t) => {
+  const { getAccessToken, getRefreshLeadMs } =
+    await import("../../open-sse/services/tokenRefresh.ts");
+  assert.equal(getRefreshLeadMs("chatgpt"), 60_000);
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("must not refresh early");
+  });
+  for (const remaining of [30_000, 240_000]) {
+    const metadata = {
+      issuer: "https://auth.openai.com",
+      subject: `stale-${remaining}`,
+      clientId: `oaiapp_stale${remaining}`,
+      scopes: [CHATGPT_PLAN_SCOPE],
+      earliestRefreshAt: Math.floor(Date.now() / 1000) + 300,
+    };
+    const saved = await db.createProviderConnection({
+      provider: "chatgpt",
+      authType: "oauth",
+      name: "Persisted timing",
+      accessToken: "fresh-access",
+      refreshToken: `fresh-${remaining}`,
+      expiresAt: new Date(Date.now() + remaining).toISOString(),
+      providerSpecificData: metadata,
+    });
+    const result = await getAccessToken(
+      "chatgpt",
+      {
+        connectionId: saved.id,
+        accessToken: "stale-access",
+        refreshToken: `stale-${remaining}`,
+        expiresAt: "2020-01-01T00:00:00Z",
+        providerSpecificData: { ...metadata, earliestRefreshAt: 0 },
+      },
+      null
+    );
+    assert.equal(result.accessToken, "fresh-access");
+    assert.equal(result.expiresAt, saved.expiresAt);
+    assert.equal(result.providerSpecificData.earliestRefreshAt, metadata.earliestRefreshAt);
+    assert.deepEqual(result.providerSpecificData.scopes, [CHATGPT_PLAN_SCOPE]);
+  }
+});
+
+test("ChatGPT Retest distinguishes rejected authorization, rate limits and transient outages", async (t) => {
+  const { testOAuthConnection } = await import("../../src/app/api/providers/[id]/test/route.ts");
+  const connection = {
+    id: "classification",
+    provider: "chatgpt",
+    accessToken: "current",
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    providerSpecificData: { scopes: [CHATGPT_PLAN_SCOPE] },
+  };
+  let status = 401;
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ secret: "must-not-leak" }, { status })
+  );
+  for (const [code, type] of [
+    [401, "token_expired"],
+    [403, "token_expired"],
+    [429, "upstream_rate_limited"],
+    [503, "upstream_unavailable"],
+  ] as const) {
+    status = code;
+    const result = await testOAuthConnection(connection);
+    assert.equal(result.diagnosis.type, type);
+    assert.ok(!JSON.stringify(result).includes("must-not-leak"));
+  }
+});
+
 test("catalog retest persists rotated identity and both expiry fields", async (t) => {
   const connection = await db.createProviderConnection({
     provider: "chatgpt",
@@ -353,9 +496,11 @@ test("code exchange uses issued client and resource; refresh rotates credentials
       token_type: "Bearer",
       expires_in: 3600,
       scope: CHATGPT_PLAN_SCOPE,
+      earliest_refresh_at: 1_800_000_000,
     });
   });
-  await exchangeChatGptCode(attempt, "code", "oaiapp_test");
+  const exchanged = await exchangeChatGptCode(attempt, "code", "oaiapp_test");
+  assert.equal(exchanged.earliest_refresh_at, 1_800_000_000);
   assert.equal(form!.get("client_id"), "oaiapp_test");
   assert.equal(form!.get("code_verifier"), attempt.verifier);
   const result = await refreshChatGptToken({
