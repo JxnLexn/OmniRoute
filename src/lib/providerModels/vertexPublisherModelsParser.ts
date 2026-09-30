@@ -25,6 +25,78 @@ function isCurrentGeminiChatModel(id: string): boolean {
   return !!match && Number(match[1]) >= 2.5;
 }
 
+function readPublisherModelId(model: VertexPublisherModel, publisher: string): string | null {
+  const rawId =
+    (typeof model.name === "string" && model.name) ||
+    (typeof model.id === "string" && model.id) ||
+    "";
+  if (!rawId) return null;
+  return rawId.includes("/") ? rawId : `publishers/${publisher}/models/${rawId}`;
+}
+
+function isPublisherChatAction(actions: Record<string, unknown> | undefined): boolean {
+  if (!actions) return true;
+  return !!(
+    actions.viewRestApi ||
+    actions.openGenerationAiStudio ||
+    actions.openGenie ||
+    actions.requestAccess
+  );
+}
+
+function toDiscoveryModel(
+  model: VertexPublisherModel,
+  id: string,
+  publisher: string,
+  targetFormat?: "claude" | "openai"
+): VertexPublisherDiscoveryModel {
+  return {
+    id,
+    name: (typeof model.displayName === "string" && model.displayName) || id,
+    supportedEndpoints: ["chat"],
+    ...(targetFormat ? { targetFormat } : {}),
+    owned_by: publisher,
+    ...(typeof model.description === "string" ? { description: model.description } : {}),
+  };
+}
+
+function toGoogleChatModel(
+  model: VertexPublisherModel,
+  routableId: string,
+  publisher: string
+): VertexPublisherDiscoveryModel | null {
+  const id = normalizeVertexModelId(routableId);
+  if (!isCurrentGeminiChatModel(id)) return null;
+  return toDiscoveryModel(model, id, publisher);
+}
+
+function toPartnerChatModel(
+  model: VertexPublisherModel,
+  routableId: string,
+  publisher: string
+): VertexPublisherDiscoveryModel | null {
+  if (!isPublisherChatAction(model.supportedActions)) return null;
+  const id = normalizeVertexModelId(routableId);
+  const targetFormat = getVertexModelTargetFormat(routableId);
+  if (!id || !targetFormat || /(?:^|[-/])ocr(?:-|$)/i.test(id)) return null;
+  return toDiscoveryModel(model, id, publisher, targetFormat);
+}
+
+function toPublisherDiscoveryModel(
+  candidate: unknown,
+  publisher: string
+): VertexPublisherDiscoveryModel[] {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+  const model = candidate as VertexPublisherModel;
+  const routableId = readPublisherModelId(model, publisher);
+  if (!routableId) return [];
+  const parsed =
+    publisher.toLowerCase() === "google"
+      ? toGoogleChatModel(model, routableId, publisher)
+      : toPartnerChatModel(model, routableId, publisher);
+  return parsed ? [parsed] : [];
+}
+
 /** Parse one Model Garden publisher-list envelope into model ids accepted by Vertex inference. */
 export function parseVertexPublisherModels(
   data: unknown,
@@ -38,51 +110,5 @@ export function parseVertexPublisherModels(
       ? record.models
       : [];
 
-  return models.flatMap((candidate) => {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
-    const model = candidate as VertexPublisherModel;
-    const rawId =
-      (typeof model.name === "string" && model.name) ||
-      (typeof model.id === "string" && model.id) ||
-      "";
-    if (!rawId) return [];
-    const routableId = rawId.includes("/") ? rawId : `publishers/${publisher}/models/${rawId}`;
-    const id = normalizeVertexModelId(routableId);
-    if (publisher.toLowerCase() === "google") {
-      if (!isCurrentGeminiChatModel(id)) return [];
-      return [
-        {
-          id,
-          name: (typeof model.displayName === "string" && model.displayName) || id,
-          supportedEndpoints: ["chat"] as ["chat"],
-          owned_by: publisher,
-          ...(typeof model.description === "string" ? { description: model.description } : {}),
-        },
-      ];
-    }
-
-    const actions = model.supportedActions;
-    if (
-      actions &&
-      !actions.viewRestApi &&
-      !actions.openGenerationAiStudio &&
-      !actions.openGenie &&
-      !actions.requestAccess
-    ) {
-      return [];
-    }
-    const targetFormat = getVertexModelTargetFormat(routableId);
-    if (!id || !targetFormat || /(?:^|[-/])ocr(?:-|$)/i.test(id)) return [];
-
-    return [
-      {
-        id,
-        name: (typeof model.displayName === "string" && model.displayName) || id,
-        supportedEndpoints: ["chat"] as ["chat"],
-        targetFormat,
-        owned_by: publisher,
-        ...(typeof model.description === "string" ? { description: model.description } : {}),
-      },
-    ];
-  });
+  return models.flatMap((candidate) => toPublisherDiscoveryModel(candidate, publisher));
 }

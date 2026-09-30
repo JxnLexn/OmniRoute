@@ -8,7 +8,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-custom-roundtrip-"
 process.env.DATA_DIR = dataDir;
 await import("../../open-sse/translator/bootstrap.ts");
 const { translateRequest } = await import("../../open-sse/translator/index.ts");
-const { extractRequestToolIdentityMap, toToolNameAliasMap } =
+const { extractRequestToolIdentityMap, resolveResponseToolNameMap } =
   await import("../../open-sse/handlers/chatCore/requestToolIdentity.ts");
 const { collectResponsesCustomToolNames } =
   await import("../../open-sse/translator/request/openai-responses/additionalTools.ts");
@@ -67,12 +67,11 @@ async function response(
   body: ReturnType<typeof request>,
   translated: Record<string, unknown>,
   name: string,
-  args: unknown
+  args: unknown,
+  callId = "call_exec"
 ) {
   const identities = extractRequestToolIdentityMap(translated);
-  const aliases =
-    toToolNameAliasMap(translated._toolNameMap as Map<string, unknown>) ??
-    toToolNameAliasMap(identities);
+  const aliases = resolveResponseToolNameMap(translated._toolNameMap, null, identities);
   const transform = createSSETransformStreamWithLogger(
     "gemini",
     "openai-responses",
@@ -87,6 +86,7 @@ async function response(
     null,
     false,
     false,
+    undefined,
     collectResponsesCustomToolNames(body.tools, body.input),
     identities
   );
@@ -98,7 +98,7 @@ async function response(
           parts: [
             {
               thoughtSignature: "synthetic-signature",
-              functionCall: { name, args, id: "call_exec" },
+              functionCall: { name, args, id: callId },
             },
           ],
         },
@@ -159,7 +159,13 @@ test("two Gemini custom calls round-trip raw input, namespace, history and a leg
         args: { input: "text(17*19)" },
       });
     }
-    const events = await response(body, translated, names[0], { input: "text(17*19)" });
+    const events = await response(
+      body,
+      translated,
+      names[0],
+      { input: "text(17*19)" },
+      `call_exec_${turn}`
+    );
     const items = events.filter((e) => e.item).map((e) => e.item!);
     const completed = events.find((e) => e.type === "response.completed")?.response?.output;
     assert.ok(completed?.length);
@@ -290,4 +296,53 @@ test("native Responses tool declarations retain reserved schemas unchanged", () 
     null
   ) as Record<string, unknown>;
   assert.deepEqual(native.tools, original.tools);
+});
+
+test("Responses function history uses the same qualified name as its declaration", () => {
+  const body = {
+    input: [
+      { role: "user", content: "run" },
+      {
+        type: "function_call",
+        namespace: "functions",
+        name: "run",
+        call_id: "call_run",
+        arguments: '{"value":7}',
+      },
+      { type: "function_call_output", call_id: "call_run", output: "7" },
+    ],
+    tools: [
+      {
+        type: "namespace",
+        name: "functions",
+        tools: [
+          {
+            type: "function",
+            name: "run",
+            parameters: { type: "object", properties: { value: { type: "number" } } },
+          },
+        ],
+      },
+    ],
+  };
+  const translated = translateRequest(
+    "openai-responses",
+    "openai",
+    "test-model",
+    body,
+    true,
+    null,
+    null,
+    null
+  ) as {
+    tools: Array<{ function: { name: string } }>;
+    messages: Array<{
+      tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+    }>;
+  };
+  const call = translated.messages.find((message) => message.tool_calls)?.tool_calls?.[0];
+  assert.equal(call?.function.name, translated.tools[0].function.name);
+  assert.equal(call?.function.name, "functions__run");
+  assert.equal(call?.id, "call_run");
+  assert.equal(call?.function.arguments, '{"value":7}');
 });

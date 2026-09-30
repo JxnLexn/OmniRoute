@@ -5,6 +5,7 @@ import ConnectionTestButton from "@/shared/components/ConnectionTestButton";
 import Badge from "@/shared/components/Badge";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { pickDisplayValue } from "@/shared/utils/maskEmail";
+import { readCookieExpiresAt } from "@/shared/utils/webCookieExpiry";
 import { formatCountdown, type CardStatus } from "../utils";
 import { translateUsageOrFallback } from "../i18nFallback";
 
@@ -56,10 +57,12 @@ export default function QuotaCardHeader({
   // OAuth token expiry — informative only. Shown small/blue for connections that
   // expose a concrete token expiry (e.g. Codex), so an operator can see at a
   // glance when the access token rotates. Hidden for API-key / no-expiry connections.
+  // #11497: cookie rows persist a derived cookieExpiresAt when their pasted
+  // credential embeds a JWT with an exp claim — surface the same countdown.
   const tokenExpiryIso =
     connection.authType === "oauth"
       ? connection.tokenExpiresAt || connection.expiresAt || null
-      : null;
+      : readCookieExpiresAt(connection.providerSpecificData);
   const tokenExpiryMs = tokenExpiryIso ? new Date(tokenExpiryIso).getTime() : NaN;
   const hasTokenExpiry = Number.isFinite(tokenExpiryMs);
   const tokenCountdown = hasTokenExpiry ? formatCountdown(tokenExpiryIso) : null;
@@ -119,7 +122,7 @@ export default function QuotaCardHeader({
           </span>
           {tokenExpiryLabel && (
             <span
-              className={`text-[10px] truncate ${tokenCountdown ? "text-sky-500" : "text-rose-500"}`}
+              className={`text-[10px] whitespace-normal [overflow-wrap:anywhere] leading-[1.4] ${tokenCountdown ? "text-sky-500" : "text-rose-500"}`}
               title={tokenExpiryTitle}
             >
               {tokenExpiryLabel}

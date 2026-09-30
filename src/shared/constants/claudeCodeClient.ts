@@ -8,15 +8,16 @@
  * advertise the version on the wire must go through getClaudeCodeClientVersion()
  * so operators can bump past Anthropic's model gate without a rebuild (#12417).
  */
-export const CLAUDE_CODE_CLIENT_VERSION = "2.1.220";
-export const CLAUDE_CODE_CLIENT_BUILD_REVISION = "1f2";
+export const CLAUDE_CODE_CLIENT_VERSION = "2.1.280";
+export const CLAUDE_CODE_CLIENT_BUILD_REVISION = "1e2";
 export const CLAUDE_CODE_CLIENT_BILLING_VERSION = `${CLAUDE_CODE_CLIENT_VERSION}.${CLAUDE_CODE_CLIENT_BUILD_REVISION}`;
-export const CLAUDE_CODE_SDK_PACKAGE_VERSION = "0.94.0";
+export const CLAUDE_CODE_SDK_PACKAGE_VERSION = "0.112.1";
 export const CLAUDE_CODE_RUNTIME_VERSION = "v26.3.0";
 
 export type ClaudeCodeEntrypoint = "cli" | "sdk-cli";
 
 const CLAUDE_VERSION_OVERRIDE_ENV = "CLAUDE_CODE_CLIENT_VERSION";
+const CLAUDE_BUILD_REVISION_OVERRIDE_ENV = "CLAUDE_CODE_CLIENT_BUILD_REVISION";
 const SAFE_HEADER_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
 
 function getSafeEnvValue(name: string, pattern: RegExp): string | null {
@@ -30,14 +31,23 @@ function getSafeEnvValue(name: string, pattern: RegExp): string | null {
 }
 
 export function getClaudeCodeClientVersion(): string {
+  return getSafeEnvValue(CLAUDE_VERSION_OVERRIDE_ENV, SAFE_HEADER_TOKEN_PATTERN) || CLAUDE_CODE_CLIENT_VERSION;
+}
+
+/**
+ * The 3-character suffix on `cc_version=`. Overridable for the same reason as
+ * the version above: it is captured alongside the version, so bumping only the
+ * version advertises a `version.revision` pair no real binary emits.
+ */
+export function getClaudeCodeClientBuildRevision(): string {
   return (
-    getSafeEnvValue(CLAUDE_VERSION_OVERRIDE_ENV, SAFE_HEADER_TOKEN_PATTERN) ||
-    CLAUDE_CODE_CLIENT_VERSION
+    getSafeEnvValue(CLAUDE_BUILD_REVISION_OVERRIDE_ENV, SAFE_HEADER_TOKEN_PATTERN) ||
+    CLAUDE_CODE_CLIENT_BUILD_REVISION
   );
 }
 
 export function getClaudeCodeClientBillingVersion(): string {
-  return `${getClaudeCodeClientVersion()}.${CLAUDE_CODE_CLIENT_BUILD_REVISION}`;
+  return `${getClaudeCodeClientVersion()}.${getClaudeCodeClientBuildRevision()}`;
 }
 
 export function getClaudeCodeUserAgent(entrypoint: ClaudeCodeEntrypoint): string {

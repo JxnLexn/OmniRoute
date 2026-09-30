@@ -90,3 +90,50 @@ test("explicit non-authoritative state overrides Cursor's legacy implicit exclus
   }).map((m) => m.id);
   assert.ok(ids.includes("retired"));
 });
+
+test("authoritative membership and manual metadata precedence are provider-independent", () => {
+  for (const providerId of ["nvidia", "openai", "openrouter", "anthropic", "vertex"]) {
+    const snapshot = JSON.stringify(input);
+    const models = mergeProviderModelListing({
+      ...input,
+      providerId,
+      syncedCatalogAuthoritative: true,
+    });
+    assert.deepEqual(
+      models.map((m) => m.id),
+      ["live", "manual"],
+      providerId
+    );
+    assert.equal(models[0].owned_by, providerId);
+    assert.equal(models[0].contextWindow, 128000);
+    assert.equal(models[0].supportsVision, false);
+    assert.equal(JSON.stringify(input), snapshot, "must not mutate inputs");
+  }
+});
+
+test("curated-only catalogs cannot be emptied or extended by a live-catalog flag", () => {
+  for (const providerId of ["kimi-web", "zai-web", "chatgpt-web"]) {
+    const models = mergeProviderModelListing({
+      ...input,
+      providerId,
+      syncedCatalogAuthoritative: true,
+    });
+    assert.deepEqual(
+      models.map((m) => m.id),
+      ["retired", "live"]
+    );
+    assert.ok(models.every((m) => m.source === "system"));
+  }
+});
+
+test("Cursor legacy listing retains its synthetic auto entry without affecting other providers", () => {
+  const models = mergeProviderModelListing({
+    ...input,
+    providerId: "cursor",
+    customModels: [],
+    syncedModels: [{ id: "live" }],
+  });
+  assert.ok(models.some((m) => m.id === "auto"));
+  assert.ok(models.some((m) => m.id === "live"));
+  assert.ok(!models.some((m) => m.id === "retired"));
+});

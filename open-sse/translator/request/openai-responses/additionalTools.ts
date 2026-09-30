@@ -134,12 +134,16 @@ export function collectResponsesCustomToolNames(
   inputItems: unknown[]
 ): Set<string> {
   const names = new Set<string>();
-  const visit = (tools: unknown[], namespace = "") => {
+  const visit = (tools: unknown[], namespaceName = "") => {
     for (const toolValue of tools) {
       const tool = toRecord(toolValue);
       const name = toolName(toolValue);
-      if (tool.type === "custom" && name) names.add(flattenNamespaceToolName(namespace, name));
-      if (tool.type === "namespace" && Array.isArray(tool.tools)) visit(tool.tools, name);
+      if (tool.type === "custom" && name) {
+        names.add(flattenNamespaceToolName(namespaceName, name));
+      }
+      if (tool.type === "namespace" && Array.isArray(tool.tools)) {
+        visit(tool.tools, name);
+      }
     }
   };
   visit(collectResponsesTools(rootTools, inputItems));

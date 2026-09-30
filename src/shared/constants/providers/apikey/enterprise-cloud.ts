@@ -5,6 +5,7 @@
 export const APIKEY_PROVIDERS_ENTERPRISE = {
   "azure-openai": {
     id: "azure-openai",
+    serviceKinds: ["llm"],
     alias: "azure",
     name: "Azure OpenAI",
     icon: "cloud",
@@ -17,6 +18,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   "azure-ai": {
     id: "azure-ai",
+    serviceKinds: ["llm"],
     alias: "azure-ai",
     name: "Azure AI Foundry",
     icon: "cloud",
@@ -31,6 +33,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   bedrock: {
     id: "bedrock",
+    serviceKinds: ["llm"],
     alias: "bedrock",
     name: "Amazon Bedrock",
     icon: "cloud",
@@ -45,6 +48,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   watsonx: {
     id: "watsonx",
+    serviceKinds: ["llm"],
     alias: "watsonx",
     name: "IBM watsonx.ai Gateway",
     icon: "hub",
@@ -59,6 +63,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   oci: {
     id: "oci",
+    serviceKinds: ["llm"],
     alias: "oci",
     name: "OCI Generative AI",
     icon: "cloud",
@@ -73,6 +78,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   sap: {
     id: "sap",
+    serviceKinds: ["llm"],
     alias: "sap",
     name: "SAP Generative AI Hub",
     icon: "business",
@@ -88,6 +94,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   modal: {
     id: "modal",
+    serviceKinds: ["llm"],
     alias: "mdl",
     name: "Modal",
     icon: "cloud_queue",
@@ -104,6 +111,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   vertex: {
     id: "vertex",
+    serviceKinds: ["llm"],
     alias: "vertex",
     name: "Vertex AI",
     icon: "cloud",
@@ -116,6 +124,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   "vertex-partner": {
     id: "vertex-partner",
+    serviceKinds: ["llm"],
     alias: "vp",
     name: "Vertex AI Partners",
     icon: "cloud",
@@ -127,6 +136,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   "cloudflare-ai": {
     id: "cloudflare-ai",
+    serviceKinds: ["llm"],
     alias: "cf",
     name: "Cloudflare Workers AI",
     icon: "cloud",
@@ -135,11 +145,12 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
     website: "https://developers.cloudflare.com/workers-ai",
     hasFree: true,
     freeNote:
-      "Free 10K Neurons/day: ~150 LLM responses or 500s Whisper audio — edge inference globally",
+      "Free 10K Neurons/day: ~150 LLM responses, 500s Whisper audio, or ~500 FLUX.1 Schnell images at 1024x1024 (4.80 Neurons per 512x512 tile) — edge inference globally",
     authHint: "Requires API Token AND Account ID (found at dash.cloudflare.com)",
   },
   scaleway: {
     id: "scaleway",
+    serviceKinds: ["llm"],
     alias: "scw",
     name: "Scaleway AI",
     icon: "cloud",
@@ -151,6 +162,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   ovhcloud: {
     id: "ovhcloud",
+    serviceKinds: ["llm"],
     alias: "ovh",
     name: "OVHcloud AI",
     icon: "cloud",
@@ -160,6 +172,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   heroku: {
     id: "heroku",
+    serviceKinds: ["llm"],
     alias: "heroku",
     name: "Heroku AI",
     icon: "cloud_upload",
@@ -169,6 +182,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   databricks: {
     id: "databricks",
+    serviceKinds: ["llm"],
     alias: "databricks",
     name: "Databricks",
     icon: "table_chart",
@@ -178,6 +192,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   datarobot: {
     id: "datarobot",
+    serviceKinds: ["llm"],
     alias: "datarobot",
     name: "DataRobot",
     icon: "precision_manufacturing",
@@ -192,6 +207,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   clarifai: {
     id: "clarifai",
+    serviceKinds: ["llm"],
     alias: "clarifai",
     name: "Clarifai",
     icon: "hub",
@@ -206,6 +222,7 @@ export const APIKEY_PROVIDERS_ENTERPRISE = {
   },
   snowflake: {
     id: "snowflake",
+    serviceKinds: ["llm"],
     alias: "snowflake",
     name: "Snowflake Cortex",
     icon: "ac_unit",

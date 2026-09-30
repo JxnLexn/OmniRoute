@@ -34,14 +34,19 @@ export default function ConnectionTestButton({ connectionId, disabled, compact, 
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const endpoint = `/api/providers/${encodeURIComponent(connectionId)}/test-message`;
+  const activeEndpoint = open ? endpoint : null;
+  const [loadedEndpoint, setLoadedEndpoint] = useState<string | null>(null);
+  if (loadedEndpoint !== activeEndpoint) {
+    setLoadedEndpoint(activeEndpoint);
+    setLoading(open);
+    setError("");
+    setAnswer("");
+    setSaved(false);
+  }
 
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    setAnswer("");
-    setSaved(false);
     Promise.all([
       fetch(endpoint, { signal: controller.signal }).then(readResponse),
       fetch(

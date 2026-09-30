@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { getClaudeCodeUserAgent } from "@/shared/constants/claudeCodeClient";
-import { ANTHROPIC_VERSION_HEADER } from "@omniroute/open-sse/config/anthropicHeaders.ts";
+import { buildClaudeModelsHeaders } from "@/lib/providerModels/claudeModelsHeaders";
 
 const pageSchema = z.object({
   data: z.array(z.unknown()),
@@ -45,13 +44,7 @@ export async function fetchClaudeDiscoveryModels({
   fetchImpl: DiscoveryFetch;
 }): Promise<ClaudeModel[]> {
   if (!accessToken && !apiKey) throw new Error("Claude model discovery requires credentials");
-  const headers: Record<string, string> = {
-    "anthropic-version": ANTHROPIC_VERSION_HEADER,
-    "User-Agent": process.env.CLAUDE_USER_AGENT?.trim() || getClaudeCodeUserAgent("cli"),
-    ...(accessToken
-      ? { Authorization: `Bearer ${accessToken}`, "anthropic-beta": "oauth-2025-04-20" }
-      : { "x-api-key": apiKey }),
-  };
+  const headers = buildClaudeModelsHeaders({ accessToken, apiKey });
   const models = new Map<string, ClaudeModel>();
   const cursors = new Set<string>();
   let cursor: string | undefined;

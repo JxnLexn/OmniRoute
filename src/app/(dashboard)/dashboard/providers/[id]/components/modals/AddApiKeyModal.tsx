@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { Button, Badge, Input, Modal, Toggle, TALL_MODAL_PROPS } from "@/shared/components";
+import { CHATGPT_WEB_CODEX_CONNECTOR_NAME } from "@/shared/constants/chatgptWebCodex";
 import {
   providerAllowsOptionalApiKey,
   supportsBulkApiKey,
@@ -46,7 +47,10 @@ export interface AddApiKeyModalProps {
   providerName?: string;
   providerWebsite?: string;
   initialBaseUrl?: string;
-  existingConnectionCount?: number;
+  // #15006 — pass live connection NAMES (not a count): after a delete the count
+  // no longer matches the highest suffix, so a count-derived default collides
+  // with a live connection and the backend name-upsert overwrites it.
+  existingConnectionNames?: string[];
   isCompatible?: boolean;
   isAnthropic?: boolean;
   isCcCompatible?: boolean;
@@ -70,7 +74,7 @@ export default function AddApiKeyModal({
   providerName,
   providerWebsite,
   initialBaseUrl,
-  existingConnectionCount = 0,
+  existingConnectionNames = [],
   isCompatible,
   isAnthropic,
   isCcCompatible,
@@ -111,7 +115,7 @@ export default function AddApiKeyModal({
     providerAllowsOptionalApiKey(provider) || Boolean(isNoAuthWebSessionCredential);
   const commandCodeAuthPhaseLabel = getCommandCodeAuthPhaseLabel(commandCodeAuthState);
   const [formData, setFormData] = useState({
-    name: computeConnectionDefaultName(existingConnectionCount),
+    name: computeConnectionDefaultName(existingConnectionNames),
     apiKey: "",
     tokenSecret: "", // #5446 — Modal Token Secret (joined with apiKey as id:secret)
     defaultModel: "",
@@ -140,7 +144,7 @@ export default function AddApiKeyModal({
     importFreeModelsOnly: false,
     tunnelId: "",
     runtimeKey: "",
-    connectorName: "OmniRoute Codex",
+    connectorName: CHATGPT_WEB_CODEX_CONNECTOR_NAME,
   });
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
@@ -162,12 +166,12 @@ export default function AddApiKeyModal({
     // name-based upsert that would silently overwrite the first connection (#6499, #11033).
     setFormData((current) => ({
       ...current,
-      name: computeConnectionDefaultName(existingConnectionCount),
+      name: computeConnectionDefaultName(existingConnectionNames),
       baseUrl: initialBaseUrl || defaultBaseUrl,
     }));
     setValidationResult(null);
     setSaveError(null);
-  }, [defaultBaseUrl, initialBaseUrl, isOpen, existingConnectionCount]);
+  }, [defaultBaseUrl, initialBaseUrl, isOpen, existingConnectionNames]);
   const bulkSupported = supportsBulkApiKey(provider);
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [bulkText, setBulkText] = useState("");
@@ -861,7 +865,7 @@ export default function AddApiKeyModal({
                   label="ChatGPT-Custom-Connector"
                   value={formData.connectorName}
                   onChange={(e) => setFormData({ ...formData, connectorName: e.target.value })}
-                  placeholder="OmniRoute Codex"
+                  placeholder={CHATGPT_WEB_CODEX_CONNECTOR_NAME}
                 />
                 {validationCapabilities && (
                   <div className="grid grid-cols-2 gap-2 text-xs text-text-muted">

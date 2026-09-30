@@ -14,10 +14,12 @@ test("T28: gemini AI Studio catalog includes current preview models", () => {
   assert.ok(geminiIds.includes("gemini-3.1-pro-preview"));
   assert.ok(geminiIds.includes("gemini-3-flash-preview"));
   assert.ok(geminiIds.includes("gemini-3.1-flash-lite"));
+  assert.ok(geminiIds.includes("gemini-3.8-flash"));
   assert.ok(geminiIds.includes("gemini-3.7-flash"));
   assert.ok(geminiIds.includes("gemini-2.5-flash"));
   assert.ok(geminiIds.includes("gemini-2.5-pro"));
-  assert.equal(geminiIds[0], "gemini-3.7-flash", "use the current Gemini Flash default");
+  // #12663 registered gemini-3.8-flash at the head of the catalog as the new default.
+  assert.equal(geminiIds[0], "gemini-3.8-flash", "use the current Gemini Flash default");
 });
 
 test("T28: antigravity static catalog exposes only callable Gemini tier IDs", () => {
@@ -79,9 +81,11 @@ test("T28: github registry exposes Gemini 3.1 Pro Preview and keeps legacy alias
   assert.equal(legacy.model, "gemini-3.1-pro-preview");
 });
 
-test("T28: qwen OAuth registry entry is retired; qwen-web keeps the native chat.qwen.ai URL", () => {
+test("T28: retired Qwen ids stay absent while official Qwen Cloud providers remain", () => {
   assert.equal(REGISTRY.qwen, undefined);
-  assert.equal(REGISTRY["qwen-web"].baseUrl, "https://chat.qwen.ai/api/v2/chat/completions");
+  assert.equal(REGISTRY["qwen-web"], undefined);
+  assert.ok(REGISTRY["qwen-cloud"]);
+  assert.ok(REGISTRY["qwen-cloud-token-plan"]);
 });
 
 test("T28: lmarena registry seeds Direct-chat Text/search; image models in IMAGE_PROVIDERS", async () => {

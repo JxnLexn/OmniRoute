@@ -10,7 +10,7 @@ export const vertexProvider: RegistryEntry = {
   // URL uses {project_id} and {region} from providerSpecificData — handled by custom executor or fallback
   // Default to us-central1 / generic endpoint; users configure project via providerSpecificData
   baseUrl: "https://us-central1-aiplatform.googleapis.com/v1/projects",
-  urlBuilder: (base, model, stream) => {
+  urlBuilder: (_base, model, stream) => {
     // Full URL: {base}/{project}/locations/{region}/publishers/google/models/{model}:{action}
     // For a generic fallback, we build a Gemini-compatible URL
     // The actual project/region are configured via providerSpecificData in the DB connection
@@ -47,6 +47,7 @@ export const vertexProvider: RegistryEntry = {
     },
     { id: "zai-org/glm-5-maas", name: "GLM 5 (Vertex MaaS)", targetFormat: "openai" },
     ...VERTEX_XAI_MODELS,
+    { id: "claude-fable-5-1", name: "Claude Fable 5.1 (Vertex)", targetFormat: "claude" },
     { id: "claude-fable-5", name: "Claude Fable 5 (Vertex)", targetFormat: "claude" },
     { id: "claude-opus-5", name: "Claude Opus 5 (Vertex)", targetFormat: "claude" },
     { id: "claude-sonnet-5", name: "Claude Sonnet 5 (Vertex)", targetFormat: "claude" },

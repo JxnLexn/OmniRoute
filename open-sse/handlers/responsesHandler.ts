@@ -1,4 +1,3 @@
-import { extractRequestToolIdentityMap } from "./chatCore/requestToolIdentity.ts";
 import { CORS_HEADERS } from "../utils/cors.ts";
 /**
  * Responses API Handler for Workers
@@ -48,7 +47,13 @@ export async function handleResponsesCore({
     modelInfo?.model
   );
 
-  const requestToolIdentityMap = extractRequestToolIdentityMap(convertedBody);
+  // #14154 — capture the #7936 {namespace, name} identity ledger BEFORE
+  // handleChatCore dispatches: extractRequestToolIdentityMap() deletes this
+  // side channel from the same object once the request is translated, so it
+  // must be read here to reach the response transform stream below.
+  const requestToolIdentityMap =
+    (convertedBody as { _namespaceToolIdentityMap?: Map<string, unknown> })
+      ._namespaceToolIdentityMap ?? null;
 
   // Ensure stream is enabled
   convertedBody.stream = true;
