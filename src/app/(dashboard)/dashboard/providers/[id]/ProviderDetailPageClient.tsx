@@ -605,7 +605,13 @@ export default function ProviderDetailPageClient() {
             providerKey={providerId}
             connectionCount={connections.length}
           />
-          {providerId === "chatgpt" && <ChatGptPlanNotice connected={connections.length > 0} />}
+          {providerId === "chatgpt" && (
+            <ChatGptPlanNotice
+              connected={connections.some(
+                (connection) => connection.isActive !== false && connection.testStatus === "active"
+              )}
+            />
+          )}
           <ConnectionsHeaderToolbar
             providerId={providerId}
             providerInfo={providerInfo}
