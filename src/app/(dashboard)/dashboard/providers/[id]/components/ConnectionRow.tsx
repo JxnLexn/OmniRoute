@@ -1,6 +1,7 @@
 "use client";
 
 import ConnectionTestButton from "@/shared/components/ConnectionTestButton";
+import { CHATGPT_USAGE_URL } from "@omniroute/open-sse/config/chatgpt";
 
 // Phase 1d extraction — Issue #3501
 // ConnectionRow (and its local helpers CooldownTimer, inferErrorType,
@@ -398,6 +399,8 @@ export default function ConnectionRow({
   onToggleProxyEnabled,
 }: ConnectionRowProps) {
   const t = useTranslations("providers");
+  const isChatGpt = connection.provider === "chatgpt";
+  const chatGptRenewsAutomatically = isChatGpt && connection.testStatus === "active";
   const emailsVisible = useEmailPrivacyStore((s) => s.emailsVisible);
   const displayName = isOAuth
     ? pickDisplayValue(
@@ -590,10 +593,16 @@ export default function ConnectionRow({
                 ) : null
               ) : tokenMinsLeft < 30 ? (
                 <span
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/15 text-amber-500"
-                  title={t("tokenExpiresSoonTitle", { minutes: tokenMinsLeft })}
+                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium ${chatGptRenewsAutomatically ? "bg-blue-500/15 text-blue-500" : "bg-amber-500/15 text-amber-500"}`}
+                  title={
+                    chatGptRenewsAutomatically
+                      ? t("chatgptTokenRenewsTitle", { minutes: tokenMinsLeft })
+                      : t("tokenExpiresSoonTitle", { minutes: tokenMinsLeft })
+                  }
                 >
-                  <span className="material-symbols-outlined text-[11px]">warning</span>
+                  <span className="material-symbols-outlined text-[11px]">
+                    {chatGptRenewsAutomatically ? "autorenew" : "warning"}
+                  </span>
                   {`~${tokenMinsLeft}m`}
                 </span>
               ) : null)}
@@ -850,7 +859,21 @@ export default function ConnectionRow({
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {isChatGpt && (
+          <a
+            href={CHATGPT_USAGE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary whitespace-nowrap"
+            title={t("chatgptManageUsageTitle")}
+          >
+            <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
+              open_in_new
+            </span>
+            {t("chatgptManageUsage")}
+          </a>
+        )}
         <ConnectionTestButton
           connectionId={connection.id}
           disabled={connection.isActive === false}
@@ -877,9 +900,9 @@ export default function ConnectionRow({
             disabled={connection.isActive === false || isRefreshing}
             onClick={onRefreshToken}
             className="!h-7 !px-2 text-xs text-amber-500 hover:text-amber-400"
-            title={t("refreshOauthTokenTitle")}
+            title={isChatGpt ? t("chatgptRefreshTokenTitle") : t("refreshOauthTokenTitle")}
           >
-            {t("tokenShort")}
+            {isChatGpt ? t("chatgptRefreshToken") : t("tokenShort")}
           </Button>
         )}
         {isCodex && onApplyCodexAuthLocal && (

@@ -88,4 +88,31 @@ describe("ConnectionRow token expiry badge (#5836)", () => {
     } as ConnectionRowConnection);
     expect(container.textContent).toContain("tokenExpiredBadge");
   });
+
+  it("shows healthy ChatGPT expiry as renewal information and links to official usage settings", () => {
+    const container = renderRow({
+      id: "chatgpt",
+      provider: "chatgpt",
+      testStatus: "active",
+      isActive: true,
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+    expect(container.querySelector('[title="chatgptTokenRenewsTitle"]')).not.toBeNull();
+    const link = container.querySelector('a[href="https://chatgpt.com/settings/usage"]');
+    expect(link?.textContent).toContain("chatgptManageUsage");
+    expect(link?.getAttribute("rel")).toContain("noreferrer");
+    expect(link?.getAttribute("target")).toBe("_blank");
+  });
+
+  it("keeps renewal errors visible and does not add ChatGPT usage actions to other providers", () => {
+    const invalid = renderRow({
+      id: "bad",
+      provider: "chatgpt",
+      testStatus: "invalid",
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+    expect(invalid.querySelector('[title="chatgptTokenRenewsTitle"]')).toBeNull();
+    const other = renderRow({ id: "other", provider: "antigravity", testStatus: "active" });
+    expect(other.querySelector('a[href="https://chatgpt.com/settings/usage"]')).toBeNull();
+  });
 });

@@ -39,7 +39,11 @@ export async function discoverChatGptModels(connection: Record<string, unknown>)
   if (!expiry || expiry < Date.now() + 60_000) {
     const refreshed = await runWithOnPersist(
       async (update) => {
-        await updateProviderConnection(String(connection.id), update);
+        await updateProviderConnection(String(connection.id), {
+          ...update,
+          // The connection row prefers tokenExpiresAt. Keep it in sync on Retest too.
+          ...(update.expiresAt ? { tokenExpiresAt: update.expiresAt } : {}),
+        });
       },
       () => getAccessToken("chatgpt", credentials, null)
     );
