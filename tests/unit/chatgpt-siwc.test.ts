@@ -344,6 +344,31 @@ test("executor sends streaming public Responses requests and blocks scopes withd
   assert.equal(calls, 2, "one inference plus one refresh; no inference after scope withdrawal");
 });
 
+test("ChatGPT discovery produces importable chat capabilities with Responses wire format", async () => {
+  const { providerModelMutationSchema } =
+    await import("../../src/shared/validation/schemas/provider.ts");
+  const models = parseChatGptModels({
+    models: [
+      { slug: "gpt-6-astra", visibility: "list" },
+      { slug: "gpt-6.1-sol", visibility: "list", supportedEndpoints: ["responses"] },
+      { slug: "hidden", visibility: "hide" },
+    ],
+  });
+  assert.equal(models.length, 2);
+  for (const model of models) {
+    const imported = providerModelMutationSchema.parse({
+      provider: "chatgpt",
+      modelId: model.id,
+      modelName: model.name,
+      source: "imported",
+      apiFormat: model.apiFormat,
+      supportedEndpoints: model.supportedEndpoints,
+    });
+    assert.equal(imported.apiFormat, "responses");
+    assert.deepEqual(imported.supportedEndpoints, ["chat"]);
+  }
+});
+
 test("catalog respects account visibility/order; same-email registrations remain separate and empty sync clears inventory", async (t) => {
   const payload = {
     models: [
@@ -386,10 +411,12 @@ test("catalog respects account visibility/order; same-email registrations remain
     return Response.json(empty ? { models: [] } : payload);
   });
   await discoverChatGptModels(first);
-  assert.equal(
-    (await getSyncedAvailableModelsForConnection("chatgpt", String(first.id))).length,
-    2
-  );
+  const synced = await getSyncedAvailableModelsForConnection("chatgpt", String(first.id));
+  assert.equal(synced.length, 2);
+  for (const model of synced) {
+    assert.equal(model.apiFormat, "responses");
+    assert.deepEqual(model.supportedEndpoints, ["chat"]);
+  }
   empty = true;
   await discoverChatGptModels(first);
   assert.equal(

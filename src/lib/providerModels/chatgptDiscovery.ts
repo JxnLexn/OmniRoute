@@ -28,7 +28,8 @@ export function parseChatGptModels(payload: unknown) {
       name: m.display_name || m.slug,
       owned_by: "chatgpt",
       apiFormat: "responses",
-      supportedEndpoints: ["responses"],
+      // Endpoint capabilities use OmniRoute's modality vocabulary, not the upstream wire format.
+      supportedEndpoints: ["chat"],
     }));
 }
 
