@@ -154,6 +154,7 @@ export async function POST(request: Request) {
       expiresAt,
       tokenExpiresAt: expiresAt,
       email: verified.email,
+      isActive: permitted,
       testStatus: permitted ? "active" : "unavailable",
       lastError: permitted
         ? null
@@ -168,6 +169,8 @@ export async function POST(request: Request) {
         clientId,
         scopes,
         earliestRefreshAt: tokens.earliest_refresh_at ?? null,
+        expiredRetry: null,
+        refreshCircuit: null,
         autoFetchModels: true,
       },
     };
@@ -188,7 +191,6 @@ export async function POST(request: Request) {
         provider: "chatgpt",
         authType: "oauth",
         name: verified.email || "ChatGPT",
-        isActive: true,
       });
     }
     if (permitted) {

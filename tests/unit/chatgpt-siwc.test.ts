@@ -33,6 +33,84 @@ test.after(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
+test("concurrent connection metadata updates cannot restore a consumed refresh token", async () => {
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Refresh persistence race",
+    accessToken: "old-access",
+    refreshToken: "consumed-refresh",
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "race-test",
+      clientId: "oaiapp_race",
+    },
+  });
+  await Promise.all([
+    db.updateProviderConnection(connection.id, {
+      accessToken: "new-access",
+      refreshToken: "replacement-refresh",
+      expiresAt: "2030-01-01T00:00:00Z",
+    }),
+    db.updateProviderConnection(connection.id, { lastHealthCheckAt: "2026-09-30T15:00:00Z" }),
+  ]);
+  const saved = await db.getProviderConnectionById(connection.id);
+  assert.equal(saved.refreshToken, "replacement-refresh");
+  assert.equal(saved.accessToken, "new-access");
+  assert.equal(saved.expiresAt, "2030-01-01T00:00:00Z");
+  assert.equal(saved.lastHealthCheckAt, "2026-09-30T15:00:00Z");
+});
+
+test("successive refresh cycles retain replacement tokens despite concurrent status writes", async (t) => {
+  const { getAccessToken } = await import("../../open-sse/services/tokenRefresh.ts");
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Successive refresh cycles",
+    accessToken: "cycle-access-0",
+    refreshToken: "cycle-refresh-0",
+    expiresAt: "2020-01-01T00:00:00Z",
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "cycle-user",
+      clientId: "oaiapp_cycles",
+    },
+  });
+  let rotations = 0;
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    assert.equal(
+      (init.body as URLSearchParams).get("refresh_token"),
+      `cycle-refresh-${rotations}`,
+      "a consumed token must never reach the issuer again"
+    );
+    rotations++;
+    return Response.json({
+      access_token: `cycle-access-${rotations}`,
+      refresh_token: `cycle-refresh-${rotations}`,
+      expires_in: 3600,
+    });
+  });
+  for (let cycle = 1; cycle <= 2; cycle++) {
+    await db.updateProviderConnection(connection.id, { expiresAt: "2020-01-01T00:00:00Z" });
+    const current = await db.getProviderConnectionById(connection.id);
+    const persist = async (result: Record<string, unknown>) => {
+      await Promise.all([
+        db.updateProviderConnection(connection.id, result),
+        db.updateProviderConnection(connection.id, { lastHealthCheckAt: new Date().toISOString() }),
+      ]);
+    };
+    await Promise.all(
+      Array.from({ length: 3 }, () =>
+        getAccessToken("chatgpt", { ...current, connectionId: connection.id }, null, null, persist)
+      )
+    );
+    assert.equal(rotations, cycle, "parallel callers share one upstream rotation");
+    const saved = await db.getProviderConnectionById(connection.id);
+    assert.equal(saved.refreshToken, `cycle-refresh-${cycle}`);
+    assert.equal(saved.accessToken, `cycle-access-${cycle}`);
+  }
+});
+
 test("ChatGPT refresh respects the one-minute window and upstream earliest refresh time", async (t) => {
   let calls = 0;
   const earliest = Math.floor(Date.now() / 1000) + 120;
@@ -352,6 +430,85 @@ test("manual completion validates owner and callback before exchange and prevent
   assert.equal(getChatGptAttempt(attempt.state, owner)?.phase, "failed");
   assert.equal((await send(body)).status, 400);
   assert.equal(exchanges, 1);
+});
+
+test("verified reauthorization reactivates the registration and resets refresh failure state", async (t) => {
+  const { POST } = await import("../../src/app/api/oauth/chatgpt/session/route.ts");
+  const { mintDashboardSessionToken } =
+    await import("../../src/shared/utils/dashboardSessionToken.ts");
+  const session = await mintDashboardSessionToken(new TextEncoder().encode(process.env.JWT_SECRET));
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Reauthorization regression",
+    accessToken: "expired-access",
+    refreshToken: "rejected-refresh",
+    isActive: false,
+    testStatus: "expired",
+    errorCode: "invalid_grant",
+    lastErrorType: "unrecoverable_refresh_error",
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "reauth-user",
+      clientId: "oaiapp_reauth",
+      expiredRetry: { count: 5, at: new Date().toISOString() },
+      refreshCircuit: { until: new Date(Date.now() + 600_000).toISOString() },
+      connectionTestModel: "saved-model",
+    },
+  });
+  const { attempt } = createChatGptAttempt("https://router.example", 1455, getChatGptHostId(), {
+    clientId: "oaiapp_reauth",
+    subject: "reauth-user",
+    connectionId: connection.id,
+  });
+  saveChatGptAttempt(attempt, createHash("sha256").update(`auth_token=${session}`).digest("hex"));
+  const { privateKey, publicKey } = await generateKeyPair("RS256");
+  const idToken = await new SignJWT({ nonce: attempt.nonce })
+    .setProtectedHeader({ alg: "RS256", kid: "reauth-test" })
+    .setIssuer("https://auth.openai.com")
+    .setAudience("oaiapp_reauth")
+    .setSubject("reauth-user")
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+  t.mock.method(globalThis, "fetch", async (url: string | URL) => {
+    if (String(url).endsWith("/.well-known/jwks.json"))
+      return Response.json({
+        keys: [{ ...(await exportJWK(publicKey)), kid: "reauth-test", alg: "RS256" }],
+      });
+    if (String(url).endsWith("/oauth/token"))
+      return Response.json({
+        access_token: "reauth-access",
+        refresh_token: "reauth-refresh",
+        id_token: idToken,
+        token_type: "Bearer",
+        expires_in: 3600,
+        scope: CHATGPT_PLAN_SCOPE,
+      });
+    assert.equal(String(url), "https://api.openai.com/v1/models");
+    return Response.json({ data: [{ id: "saved-model" }] });
+  });
+  const response = await POST(
+    new Request("https://router.example/api/oauth/chatgpt/session", {
+      method: "POST",
+      headers: {
+        host: "router.example",
+        origin: "https://router.example",
+        cookie: `auth_token=${session}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ action: "complete", state: attempt.state, code: "reauth-code" }),
+    })
+  );
+  assert.equal(response.status, 200);
+  const saved = await db.getProviderConnectionById(connection.id);
+  assert.equal(saved.isActive, true);
+  assert.equal(saved.testStatus, "active");
+  assert.equal(saved.errorCode ?? null, null);
+  assert.equal(saved.providerSpecificData.expiredRetry ?? null, null);
+  assert.equal(saved.providerSpecificData.refreshCircuit ?? null, null);
+  assert.equal(saved.providerSpecificData.connectionTestModel, "saved-model");
+  assert.equal(saved.refreshToken, "reauth-refresh");
 });
 
 test("SIWC uses independent dynamic registration, PKCE, nonce, resource and persistent host ID", () => {
