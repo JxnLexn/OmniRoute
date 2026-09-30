@@ -46,12 +46,14 @@ const baseProps = {
   onDelete: () => {},
 };
 
-function renderRow(connection: ConnectionRowConnection): HTMLElement {
+function renderRow(connection: ConnectionRowConnection, onReauth?: () => void): HTMLElement {
   const container = makeContainer();
   const root = createRoot(container);
   cleanupCallbacks.push(() => act(() => root.unmount()));
   act(() => {
-    root.render(React.createElement(ConnectionRow, { ...baseProps, connection } as never));
+    root.render(
+      React.createElement(ConnectionRow, { ...baseProps, connection, onReauth } as never)
+    );
   });
   return container;
 }
@@ -119,5 +121,21 @@ describe("ConnectionRow token expiry badge (#5836)", () => {
     expect(invalid.querySelector('[title="chatgptTokenRenewsTitle"]')).toBeNull();
     const other = renderRow({ id: "other", provider: "antigravity", testStatus: "active" });
     expect(other.querySelector('a[href="https://chatgpt.com/settings/usage"]')).toBeNull();
+  });
+
+  it("opens ChatGPT reauthentication with a compact action instead of a branded sign-in button", () => {
+    const onReauth = vi.fn();
+    const container = renderRow(
+      { id: "chatgpt", provider: "chatgpt", testStatus: "active" },
+      onReauth
+    );
+    expect(container.textContent).not.toContain("Continue with ChatGPT");
+    const button = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="reauthenticateConnection"]'
+    );
+    expect(button).not.toBeNull();
+    expect(button?.getAttribute("aria-haspopup")).toBe("dialog");
+    act(() => button!.click());
+    expect(onReauth).toHaveBeenCalledOnce();
   });
 });
