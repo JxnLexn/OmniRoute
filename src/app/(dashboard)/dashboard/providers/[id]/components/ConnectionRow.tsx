@@ -5,7 +5,6 @@ import {
   ChatGptManageUsageButton,
   ChatGptUsageLimitNotice,
 } from "@/shared/components/ChatGptPlanUi";
-import ChatGptSignInButton from "@/shared/components/ChatGptSignInButton";
 import { hasChatGptUsageLimit } from "@/shared/utils/chatgptPlanUi";
 
 // Phase 1d extraction — Issue #3501
@@ -964,18 +963,19 @@ export default function ConnectionRow({
         <div
           className={`flex gap-1 ms-1 transition-opacity ${isChatGpt ? "flex-wrap min-w-0 max-w-full items-center" : ""}`}
         >
-          {onReauth &&
-            (isChatGpt ? (
-              <ChatGptSignInButton intent="continue" opensDialog onClick={onReauth} />
-            ) : (
-              <button
-                onClick={onReauth}
-                className="p-2 hover:bg-amber-500/10 rounded text-amber-600 hover:text-amber-500"
-                title={t("reauthenticateConnection")}
-              >
-                <span className="material-symbols-outlined text-[18px]">passkey</span>
-              </button>
-            ))}
+          {onReauth && (
+            <button
+              onClick={onReauth}
+              className="p-2 hover:bg-amber-500/10 rounded text-amber-600 hover:text-amber-500"
+              title={t("reauthenticateConnection")}
+              aria-label={t("reauthenticateConnection")}
+              aria-haspopup="dialog"
+            >
+              <span className="material-symbols-outlined text-[18px]" aria-hidden="true">
+                passkey
+              </span>
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary"
