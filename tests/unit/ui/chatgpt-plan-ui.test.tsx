@@ -51,10 +51,10 @@ it("distinguishes unavailable account totals from zero or unlimited usage", () =
 
 it("shows plan permission without guessing a subscription tier", () => {
   const view = render(<ChatGptPlanBadge scopes={["chatgpt.tokens.use.direct"]} />);
-  expect(screen.getByText("ChatGPT plan linked")).toBeInTheDocument();
+  expect(screen.getByText("Plan linked")).toBeInTheDocument();
   view.rerender(<ChatGptPlanBadge scopes={["openid"]} />);
   expect(screen.getByText("Plan not authorized")).toBeInTheDocument();
-  expect(screen.queryByText("ChatGPT plan linked")).toBeNull();
+  expect(screen.queryByText("Plan linked")).toBeNull();
 });
 
 it("makes usage management primary for a confirmed limit, with no app-credit sales", () => {

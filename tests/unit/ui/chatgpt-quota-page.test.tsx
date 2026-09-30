@@ -45,8 +45,8 @@ it("shows ChatGPT usage management without calling an unsupported quota endpoint
   );
   expect(screen.getByText("Usage recorded by OmniRoute")).toBeInTheDocument();
   expect(await screen.findByText("321")).toBeInTheDocument();
-  expect(screen.getByText("ChatGPT plan linked")).toBeInTheDocument();
-  expect(screen.getByText("ChatGPT plan linked").parentElement).not.toHaveTextContent("Unknown");
+  expect(screen.getByText("Plan linked")).toBeInTheDocument();
+  expect(screen.getByText("Plan linked").parentElement).not.toHaveTextContent("Unknown");
   expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
     "/api/usage/chatgpt-quota-fixture"
   );
