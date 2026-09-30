@@ -5974,7 +5974,7 @@
     "chatgptUsingPlan": "Dein ChatGPT-Tarif wird genutzt",
     "chatgptPlanDescription": "Berechtigte Anfragen nutzen deinen ChatGPT-Tarif oder dein Guthaben. Dabei gelten die OpenAI-Limits für diese App.",
     "chatgptPlanUsage": "Nutzung deines ChatGPT-Tarifs",
-    "chatgptPlanLinked": "ChatGPT-Plan verknüpft",
+    "chatgptPlanLinked": "Plan verknüpft",
     "chatgptPlanNotAuthorized": "Plan nicht freigegeben",
     "chatgptPlanBadgeHint": "Freigabe zur Plannutzung für diese Registrierung, kein Plus-/Pro-Tarif oder Restkontingent.",
     "chatgptLocalUsage": "Über OmniRoute erfasste Nutzung",

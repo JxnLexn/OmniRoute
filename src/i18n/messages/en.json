@@ -6004,7 +6004,7 @@
     "chatgptUsingPlan": "Using your ChatGPT plan",
     "chatgptPlanDescription": "Eligible requests use your ChatGPT plan or credits balance, subject to OpenAI's limits for this app.",
     "chatgptPlanUsage": "ChatGPT plan usage",
-    "chatgptPlanLinked": "ChatGPT plan linked",
+    "chatgptPlanLinked": "Plan linked",
     "chatgptPlanNotAuthorized": "Plan not authorized",
     "chatgptPlanBadgeHint": "Plan-usage permission for this registration, not a Plus/Pro tier or remaining allowance.",
     "chatgptLocalUsage": "Usage recorded by OmniRoute",
