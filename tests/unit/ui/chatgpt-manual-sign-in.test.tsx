@@ -43,7 +43,7 @@ it("offers manual paste without helper controls and completes the current attemp
       return Response.json(
         body.action === "start"
           ? { state: "test-state", authUrl: "https://auth.openai.com/fixture" }
-          : { success: true, warning: "Catalog retry needed" }
+          : { success: true, planAuthorized: true, warning: "Catalog retry needed" }
       );
     })
   );
@@ -99,6 +99,29 @@ it("uses Continue for reauthentication and never repeats the welcome", async () 
   fireEvent.click(screen.getByRole("button", { name: "Complete sign-in" }));
   await screen.findByRole("button", { name: "Done" });
   expect(screen.queryByText("You're using your ChatGPT plan")).toBeNull();
+});
+
+it("does not announce plan use when authorization was declined", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, init) =>
+      Response.json(
+        JSON.parse(init.body).action === "start"
+          ? { state: "test-state", authUrl: "https://auth.openai.com/fixture" }
+          : { success: true, planAuthorized: false, warning: "Signed in without plan usage." }
+      )
+    )
+  );
+  render(<ChatGptOAuthModal isOpen onClose={vi.fn()} onSuccess={vi.fn()} />);
+  await screen.findByRole("link");
+  fireEvent.change(screen.getByRole("textbox", { name: "Callback URL" }), {
+    target: { value: callback },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Complete sign-in" }));
+  await screen.findByRole("button", { name: "Done" });
+  expect(screen.queryByText("You're using your ChatGPT plan")).toBeNull();
+  expect(screen.getByText("Signed in without plan usage.")).toBeInTheDocument();
+  expect(window.localStorage.getItem("omniroute.chatgpt.plan-welcome.v1")).toBeNull();
 });
 
 it("cancels a pending attempt on close", async () => {
