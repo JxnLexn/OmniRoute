@@ -1,7 +1,21 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { CHATGPT_USAGE_URL } from "@omniroute/open-sse/config/chatgpt";
+import { CHATGPT_USAGE_URL, hasChatGptPlanScope } from "@omniroute/open-sse/config/chatgpt";
+import type { ConnectionLocalUsage } from "@/shared/types/connectionLocalUsage";
+
+export function ChatGptPlanBadge({ scopes }: { scopes: unknown }) {
+  const t = useTranslations("providers");
+  const permitted = hasChatGptPlanScope(scopes);
+  return (
+    <span
+      className="rounded-full border border-neutral-400/30 px-1.5 py-0.5 text-[10px] leading-3 text-text-muted"
+      title={t("chatgptPlanBadgeHint")}
+    >
+      {t(permitted ? "chatgptPlanLinked" : "chatgptPlanNotAuthorized")}
+    </span>
+  );
+}
 
 // Adapted to OmniRoute's themes from the official SIWC UI examples:
 // https://developers.openai.com/siwc/ui-ux-guidelines
@@ -90,26 +104,70 @@ export function ChatGptUsageLimitNotice() {
   );
 }
 
-export function ChatGptUsageSummary({ limitReached = false }: { limitReached?: boolean }) {
+export function ChatGptUsageSummary({
+  limitReached = false,
+  usage,
+  loading = false,
+  error = false,
+  onRefresh,
+}: {
+  limitReached?: boolean;
+  usage?: ConnectionLocalUsage;
+  loading?: boolean;
+  error?: boolean;
+  onRefresh?: () => void;
+}) {
   const t = useTranslations("providers");
   return (
     <div className="min-w-0 space-y-3 p-3">
       {limitReached && <ChatGptUsageLimitNotice />}
       <section className="min-w-0 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100">
-        <h3 className="font-medium">{t("chatgptPlanUsage")}</h3>
+        <h3 className="font-medium">{t("chatgptLocalUsage")}</h3>
         <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-400">
-          {t("chatgptUsageUnavailable")}
+          {t("chatgptLocalUsageDescription")}
         </p>
         <dl className="my-4 grid grid-cols-3 gap-2 border-y border-neutral-200 py-4 dark:border-neutral-700">
-          {["chatgptUsageTotal", "chatgptUsagePeak", "chatgptUsageDays"].map((key) => (
+          {(
+            [
+              ["chatgptUsageRequests", usage?.requests],
+              ["chatgptUsageTokens", usage?.tokens],
+              ["chatgptUsageDays", usage?.activeDays],
+            ] as const
+          ).map(([key, value]) => (
             <div key={key} className="min-w-0">
               <dt className="text-xs text-neutral-600 dark:text-neutral-400">{t(key)}</dt>
-              <dd className="mt-2 text-lg" aria-label={t("chatgptUsageNotAvailable")}>
-                —
+              <dd
+                className="mt-2 break-words text-lg"
+                aria-label={value === undefined ? t("chatgptUsageNotAvailable") : undefined}
+              >
+                {value === undefined ? "—" : value.toLocaleString()}
               </dd>
             </div>
           ))}
         </dl>
+        <p className="mb-3 text-xs text-neutral-600 dark:text-neutral-400">
+          {t("chatgptLocalUsageCaveat")}
+        </p>
+        {loading && (
+          <p role="status" className="mb-2 text-xs">
+            {t("chatgptLocalUsageLoading")}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mb-2 text-xs">
+            {t("chatgptLocalUsageError")}
+          </p>
+        )}
+        {onRefresh && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onRefresh}
+            className="mb-3 text-xs underline disabled:opacity-50"
+          >
+            {t("chatgptLocalUsageRefresh")}
+          </button>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-neutral-100 p-3 dark:bg-neutral-950">
           <span className="text-xs">{t("chatgptViewUsage")}</span>
           <ChatGptManageUsageButton />

@@ -8,6 +8,7 @@ import {
   ChatGptPlanNotice,
   ChatGptPlanWelcome,
   ChatGptUsageSummary,
+  ChatGptPlanBadge,
 } from "@/shared/components/ChatGptPlanUi";
 import {
   hasChatGptUsageLimit,
@@ -42,10 +43,18 @@ it("does not imply plan use before connecting", () => {
 
 it("distinguishes unavailable account totals from zero or unlimited usage", () => {
   render(<ChatGptUsageSummary />);
-  expect(screen.getByText(/Account-wide usage totals are not available/)).toBeDefined();
+  expect(screen.getByText(/Not your account-wide ChatGPT usage/)).toBeDefined();
   expect(screen.getAllByLabelText("Not available")).toHaveLength(3);
   expect(screen.queryByText("Usage limit reached")).toBeNull();
   expect(screen.queryByText(/Last 30 days/)).toBeNull();
+});
+
+it("shows plan permission without guessing a subscription tier", () => {
+  const view = render(<ChatGptPlanBadge scopes={["chatgpt.tokens.use.direct"]} />);
+  expect(screen.getByText("ChatGPT plan linked")).toBeInTheDocument();
+  view.rerender(<ChatGptPlanBadge scopes={["openid"]} />);
+  expect(screen.getByText("Plan not authorized")).toBeInTheDocument();
+  expect(screen.queryByText("ChatGPT plan linked")).toBeNull();
 });
 
 it("makes usage management primary for a confirmed limit, with no app-credit sales", () => {
