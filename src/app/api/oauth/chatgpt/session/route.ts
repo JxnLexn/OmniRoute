@@ -146,11 +146,13 @@ export async function POST(request: Request) {
       throw new Error("Different account");
     const scopes = tokens.scope.split(/\s+/).filter(Boolean);
     const permitted = hasChatGptPlanScope(scopes);
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
     const tokenData = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       idToken: tokens.id_token,
-      expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      expiresAt,
+      tokenExpiresAt: expiresAt,
       email: verified.email,
       testStatus: permitted ? "active" : "unavailable",
       lastError: permitted

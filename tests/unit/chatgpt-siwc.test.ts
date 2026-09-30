@@ -33,6 +33,83 @@ test.after(() => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
+test("catalog retest persists rotated identity and both expiry fields", async (t) => {
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Expiry regression",
+    accessToken: "expired-access",
+    refreshToken: "expiry-refresh",
+    expiresAt: new Date(Date.now() - 1000).toISOString(),
+    tokenExpiresAt: new Date(Date.now() - 1000).toISOString(),
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "expiry",
+      clientId: "oaiapp_expiry",
+      scopes: [CHATGPT_PLAN_SCOPE],
+    },
+  });
+  t.mock.method(globalThis, "fetch", async (url: string) =>
+    String(url).includes("/oauth/token")
+      ? Response.json({
+          access_token: "rotated-access",
+          refresh_token: "rotated-refresh",
+          id_token: "rotated-identity",
+          expires_in: 3600,
+        })
+      : Response.json({ models: [] })
+  );
+  await discoverChatGptModels(connection);
+  const saved = await db.getProviderConnectionById(connection.id);
+  assert.equal(saved.tokenExpiresAt, saved.expiresAt);
+  assert.ok(Date.parse(saved.expiresAt) > Date.now() + 50 * 60_000);
+  assert.equal(saved.idToken, "rotated-identity");
+});
+
+test("manual refresh distinguishes reauthorization from temporary upstream failures", async (t) => {
+  const { POST } = await import("../../src/app/api/providers/[id]/refresh/route.ts");
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Refresh regression",
+    accessToken: "access",
+    refreshToken: "route-refresh",
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "refresh",
+      clientId: "oaiapp_refresh",
+      scopes: [CHATGPT_PLAN_SCOPE],
+    },
+  });
+  let status = 503;
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        error: status === 400 ? "invalid_grant" : "temporarily_unavailable",
+        secret: "must-not-leak",
+      },
+      { status }
+    )
+  );
+  const call = () =>
+    POST(new Request("http://localhost/api/providers/test/refresh", { method: "POST" }), {
+      params: Promise.resolve({ id: connection.id }),
+    });
+  const temporary = await call();
+  assert.equal(temporary.status, 503);
+  const temporaryBody = await temporary.json();
+  assert.equal(typeof temporaryBody.error, "string");
+  assert.ok(!JSON.stringify(temporaryBody).includes("must-not-leak"));
+  assert.equal((await db.getProviderConnectionById(connection.id)).refreshToken, "route-refresh");
+  status = 400;
+  const terminal = await call();
+  const body = await terminal.json();
+  assert.equal(terminal.status, 401);
+  assert.equal(body.requiresReauth, true);
+  assert.match(body.error, /sign in again/i);
+  assert.ok(!JSON.stringify(body).includes("must-not-leak"));
+});
+
 test("management-only sign-in rejects unauthenticated and cross-origin requests and never exposes PKCE", async () => {
   const { POST } = await import("../../src/app/api/oauth/chatgpt/session/route.ts");
   const { mintDashboardSessionToken } =

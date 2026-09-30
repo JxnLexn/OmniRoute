@@ -44,7 +44,8 @@ export async function refreshChatGptToken(credentials: Credentials, proxyConfig:
       ].includes(code)
     )
       return { error: "unrecoverable_refresh_error", code };
-    return null;
+    // Preserve temporary failure classification without exposing token endpoint bodies.
+    return { error: "temporary_refresh_error", status: response.status };
   }
   const tokens = tokensSchema.parse(await response.json());
   return {
