@@ -24,8 +24,16 @@ it("shows ChatGPT usage management without calling an unsupported quota endpoint
             isActive: true,
             name: "ChatGPT test account",
             testStatus: "expired",
+            providerSpecificData: { scopes: ["chatgpt.tokens.use.direct"] },
           },
         ],
+      });
+    if (url === "/api/usage/local-summary?connectionId=chatgpt-quota-fixture")
+      return Response.json({
+        source: "retained_local_history",
+        requests: 7,
+        tokens: 321,
+        activeDays: 2,
       });
     return Response.json({ caches: {} });
   });
@@ -35,8 +43,10 @@ it("shows ChatGPT usage management without calling an unsupported quota endpoint
     "href",
     "https://chatgpt.com/settings/usage"
   );
-  expect(screen.getByText("ChatGPT plan usage")).toBeInTheDocument();
-  expect(screen.getAllByLabelText("Not available")).toHaveLength(3);
+  expect(screen.getByText("Usage recorded by OmniRoute")).toBeInTheDocument();
+  expect(await screen.findByText("321")).toBeInTheDocument();
+  expect(screen.getByText("ChatGPT plan linked")).toBeInTheDocument();
+  expect(screen.getByText("ChatGPT plan linked").parentElement).not.toHaveTextContent("Unknown");
   expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
     "/api/usage/chatgpt-quota-fixture"
   );
