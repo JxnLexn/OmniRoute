@@ -277,7 +277,6 @@ const nextConfig = {
   },
   outputFileTracingRoot: projectRoot,
   outputFileTracingIncludes: {
-    "/api/oauth/chatgpt/helper": ["./scripts/cli/chatgpt-login.mjs"],
     // Migration SQL and compression rule/filter JSON files are read via fs at
     // runtime and are NOT always auto-traced by webpack/turbopack.
     "/*": [

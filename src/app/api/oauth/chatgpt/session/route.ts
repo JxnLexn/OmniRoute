@@ -24,6 +24,7 @@ import { discoverChatGptModels } from "@/lib/providerModels/chatgptDiscovery";
 import { CHATGPT_ISSUER, hasChatGptPlanScope } from "@omniroute/open-sse/config/chatgpt";
 import { errorResponse } from "@omniroute/open-sse/utils/error";
 import { DASHBOARD_SESSION_COOKIE } from "@/shared/utils/dashboardSessionToken";
+import { parseChatGptManualCallback } from "@/shared/utils/chatgptCallback";
 
 export const runtime = "nodejs";
 const schema = z.discriminatedUnion("action", [
@@ -39,6 +40,11 @@ const schema = z.discriminatedUnion("action", [
     clientId: z.string().max(200).optional(),
   }),
   z.object({ action: z.literal("status"), state: z.string().max(2000) }),
+  z.object({
+    action: z.literal("complete-url"),
+    state: z.string().min(1).max(2000),
+    callbackUrl: z.string().min(1).max(16384),
+  }),
   z.object({ action: z.literal("cancel"), state: z.string().max(2000) }),
 ]);
 function json(value: unknown) {
@@ -111,6 +117,21 @@ export async function POST(request: Request) {
       return errorResponse(503, "Unable to start ChatGPT sign-in. Try again shortly.");
     }
   }
+  let callback: { code: string; clientId?: string };
+  if (body.action === "complete-url") {
+    const pending = getChatGptAttempt(body.state, owner);
+    if (!pending || pending.phase !== "pending")
+      return errorResponse(400, "This sign-in expired or was already used. Start again.");
+    try {
+      callback = parseChatGptManualCallback(body.callbackUrl, pending.attempt);
+      resolveChatGptClientId(pending.attempt, callback.clientId);
+    } catch {
+      return errorResponse(
+        400,
+        "Paste the complete callback URL from this sign-in, including code, state and client_id if present. If access was denied, start again."
+      );
+    }
+  } else callback = body;
   let entry: ReturnType<typeof claimChatGptAttempt>;
   try {
     entry = claimChatGptAttempt(body.state, owner);
@@ -118,8 +139,8 @@ export async function POST(request: Request) {
     return errorResponse(400, "This sign-in expired or was already used. Start again.");
   }
   try {
-    const clientId = resolveChatGptClientId(entry.attempt, body.clientId);
-    const tokens = await exchangeChatGptCode(entry.attempt, body.code, clientId);
+    const clientId = resolveChatGptClientId(entry.attempt, callback.clientId);
+    const tokens = await exchangeChatGptCode(entry.attempt, callback.code, clientId);
     const verified = await verifyChatGptIdentity(tokens.id_token, clientId, entry.attempt.nonce);
     if (entry.attempt.subject && verified.subject !== entry.attempt.subject)
       throw new Error("Different account");

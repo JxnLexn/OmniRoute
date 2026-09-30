@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { parseChatGptManualCallback } from "@/shared/utils/chatgptCallback";
 import Modal from "./Modal";
 import Button from "./Button";
 import ChatGptSignInButton from "./ChatGptSignInButton";
@@ -22,78 +23,88 @@ async function session(body: Record<string, unknown>) {
   return result;
 }
 
-const subscribeOrigin = () => () => {};
-const browserOrigin = () => window.location.origin;
+const redirectUri = "http://127.0.0.1:1455/auth/callback";
 export default function ChatGptOAuthModal(props: Props) {
-  const origin = useSyncExternalStore(subscribeOrigin, browserOrigin, () => "");
-  return props.isOpen && origin ? <ChatGptOAuthDialog {...props} origin={origin} /> : null;
+  return props.isOpen ? <ChatGptOAuthDialog {...props} /> : null;
 }
 
-function ChatGptOAuthDialog({
-  isOpen,
-  onClose,
-  onSuccess,
-  reauthConnection,
-  origin,
-}: Props & { origin: string }) {
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname);
-  const [mode, setMode] = useState(local ? "local" : "helper");
-  const [port, setPort] = useState(local ? Number(new URL(origin).port || 20128) : 1455);
-  const [busy, setBusy] = useState(false);
+function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Props) {
+  const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
+  const [callbackUrl, setCallbackUrl] = useState("");
   const [attempt, setAttempt] = useState<{ state: string; authUrl: string } | null>(null);
   const stateRef = useRef<string | null>(null);
+  const generation = useRef(0);
   const [done, setDone] = useState(false);
+  const connectionId = reauthConnection?.id;
+
+  const start = useCallback(async () => {
+    const current = ++generation.current;
+    try {
+      if (stateRef.current) await session({ action: "cancel", state: stateRef.current });
+      if (current !== generation.current) return;
+      stateRef.current = null;
+      const result = await session({ action: "start", port: 1455, connectionId });
+      if (current !== generation.current) {
+        void session({ action: "cancel", state: result.state }).catch(() => {});
+        return;
+      }
+      stateRef.current = result.state;
+      setAttempt(result);
+    } catch (err) {
+      if (current === generation.current)
+        setError(err instanceof Error ? err.message : "Sign-in could not be started.");
+    } finally {
+      if (current === generation.current) setBusy(false);
+    }
+  }, [connectionId]);
+
   useEffect(() => {
+    const lifecycle = generation;
+    // Skip abandoned/Strict Mode mounts before creating a server-side OAuth attempt.
+    const timer = setTimeout(() => void start(), 0);
     return () => {
+      clearTimeout(timer);
+      lifecycle.current++;
       const state = stateRef.current;
       stateRef.current = null;
       if (state) void session({ action: "cancel", state }).catch(() => {});
     };
-  }, []);
-  useEffect(() => {
-    if (!isOpen || !attempt || done) return;
-    let stopped = false;
-    const timer = setInterval(() => {
-      void session({ action: "status", state: attempt.state })
-        .then((result) => {
-          if (stopped) return;
-          if (result.phase === "done") {
-            setDone(true);
-            setWarning(result.warning || "");
-          }
-          if (result.phase === "failed" || result.phase === "expired") {
-            setError("Sign-in failed or expired. Start a new sign-in below.");
-            setAttempt(null);
-          }
-        })
-        .catch(() => {
-          if (!stopped)
-            setError("Unable to check sign-in status. Check your dashboard connection.");
-        });
-    }, 2000);
-    return () => {
-      stopped = true;
-      clearInterval(timer);
-    };
-  }, [isOpen, attempt, done]);
+  }, [start]);
 
-  async function start() {
-    setBusy(true);
+  async function complete() {
+    if (!attempt || busy) return;
     setError("");
     try {
-      if (stateRef.current) await session({ action: "cancel", state: stateRef.current });
-      const result = await session({ action: "start", port, connectionId: reauthConnection?.id });
-      stateRef.current = result.state;
-      setAttempt(result);
+      parseChatGptManualCallback(callbackUrl, { redirectUri, state: attempt.state });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in could not be started.");
+      setError(err instanceof Error ? err.message : "Invalid callback URL.");
+      return;
+    }
+    setBusy(true);
+    const current = generation.current;
+    const pasted = callbackUrl;
+    // Never persist the one-time code in browser storage; clear the form on submission.
+    setCallbackUrl("");
+    try {
+      const result = await session({
+        action: "complete-url",
+        state: attempt.state,
+        callbackUrl: pasted,
+      });
+      if (current !== generation.current) return;
+      stateRef.current = null;
+      setDone(true);
+      setWarning(result.warning || "");
+    } catch (err) {
+      if (current === generation.current)
+        setError(err instanceof Error ? err.message : "Sign-in could not be completed.");
     } finally {
-      setBusy(false);
+      if (current === generation.current) setBusy(false);
     }
   }
-  const command = `node ./chatgpt-login.mjs --origin '${origin}' --port ${port}`;
+
   return (
     <Modal
       isOpen={isOpen}
@@ -119,109 +130,72 @@ function ChatGptOAuthDialog({
           </div>
         ) : (
           <>
-            <label className="block space-y-2">
-              <span>Where is OmniRoute running?</span>
-              <select
-                className="w-full rounded-lg border border-border bg-bg-input p-3"
-                value={mode}
-                disabled={!!attempt}
-                onChange={(event) => {
-                  setMode(event.target.value);
-                  setPort(
-                    event.target.value === "local" ? Number(new URL(origin).port || 20128) : 1455
-                  );
+            <section className="space-y-3">
+              <h3 className="font-semibold">1. Sign in with ChatGPT</h3>
+              <p className="text-sm text-text-muted">
+                Open the sign-in page in a new tab and allow ChatGPT plan usage. Keep this dialog
+                open.
+              </p>
+              {attempt ? (
+                <ChatGptSignInButton href={attempt.authUrl} />
+              ) : (
+                <ChatGptSignInButton busy={busy} disabled />
+              )}
+            </section>
+            <section className="space-y-3">
+              <h3 className="font-semibold">2. Copy the callback URL</h3>
+              <p id="chatgpt-callback-help" className="text-sm text-text-muted">
+                After signing in, your browser redirects to <code>{redirectUri}</code>. A “can’t
+                connect” page is expected: copy the complete URL from the address bar, including
+                everything after the question mark, and paste it below. No helper, SSH tunnel or
+                open server port is needed. Do not share this one-time URL.
+              </p>
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void complete();
                 }}
               >
-                {local && <option value="local">On this computer</option>}
-                <option value="helper">On a server — local sign-in helper</option>
-                <option value="ssh">On a server — SSH tunnel</option>
-              </select>
-            </label>
-            <label className="block space-y-2">
-              <span>Local callback port</span>
-              <input
-                className="w-32 rounded-lg border border-border bg-bg-input p-3"
-                type="number"
-                min={1024}
-                max={65535}
-                value={port}
-                disabled={!!attempt}
-                onChange={(e) => setPort(Number(e.target.value))}
-              />
-            </label>
-            {mode === "helper" && (
-              <div className="space-y-3 rounded-lg border border-border p-4">
-                <h3 className="font-semibold">1. Start the helper on this computer</h3>
-                <p className="text-sm text-text-muted">
-                  Requires Node.js 20 or newer. Download the helper, then run this command from your
-                  downloads folder. Leave it running during sign-in.
-                </p>
-                <a
-                  href="/api/oauth/chatgpt/helper"
-                  download="chatgpt-login.mjs"
-                  className="text-primary underline"
+                <label className="block space-y-2">
+                  <span>Callback URL</span>
+                  <textarea
+                    className="w-full rounded-lg border border-border bg-bg-input p-3 font-mono text-sm"
+                    value={callbackUrl}
+                    onChange={(event) => setCallbackUrl(event.target.value)}
+                    placeholder={redirectUri + "?code=…&state=…&client_id=…"}
+                    aria-describedby="chatgpt-callback-help"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    maxLength={16384}
+                    rows={4}
+                    disabled={!attempt || busy}
+                  />
+                </label>
+                <Button
+                  type="submit"
+                  disabled={!attempt || busy || !callbackUrl.trim()}
+                  loading={busy && !!attempt}
                 >
-                  Download sign-in helper
-                </a>
-                <pre className="overflow-x-auto rounded bg-bg-input p-3 text-sm">
-                  <code>{command}</code>
-                </pre>
-                <p className="text-sm text-text-muted">
-                  It listens only on 127.0.0.1 and never receives your access or refresh tokens.
-                </p>
-              </div>
-            )}
-            {mode === "ssh" && (
-              <div className="space-y-3 rounded-lg border border-border p-4">
-                <h3 className="font-semibold">1. Open an SSH tunnel on this computer</h3>
-                <pre className="overflow-x-auto rounded bg-bg-input p-3 text-sm">
-                  <code>{`ssh -N -L 127.0.0.1:${port}:127.0.0.1:20128 user@your-server`}</code>
-                </pre>
-                <p className="text-sm text-text-muted">
-                  Replace user@your-server with your SSH destination, and 20128 with the
-                  server&apos;s OmniRoute port if different. Keep the tunnel open. Do not run the
-                  helper on the same port.
-                </p>
-              </div>
-            )}
-            {mode === "local" && (
-              <p className="text-sm text-text-muted">
-                The callback must reach OmniRoute over HTTP at 127.0.0.1 on this port. For an
-                HTTPS-only local installation, use the helper instead.
-              </p>
-            )}
-            <div className="space-y-3">
-              <h3 className="font-semibold">
-                {mode === "local" ? "Sign in" : "2. Sign in and return to OmniRoute"}
-              </h3>
-              <p className="text-sm text-text-muted">
-                Allow ChatGPT plan usage if you want to run models. After the local callback opens,
-                click Continue to OmniRoute to finish. No tokens need to be copied.
-              </p>
-              {!attempt ? (
-                <ChatGptSignInButton
-                  onClick={start}
-                  busy={busy}
-                  disabled={port < 1024 || port > 65535}
-                />
-              ) : (
-                <>
-                  <ChatGptSignInButton href={attempt.authUrl} />
-                  <p role="status" className="text-sm text-text-muted">
-                    Waiting for sign-in. This attempt expires after 10 minutes.
-                  </p>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      void session({ action: "cancel", state: attempt.state });
-                      setAttempt(null);
-                    }}
-                  >
-                    Start over
-                  </Button>
-                </>
-              )}
-            </div>
+                  Complete sign-in
+                </Button>
+              </form>
+              <p className="text-sm text-text-muted">This attempt expires after 10 minutes.</p>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  setError("");
+                  setCallbackUrl("");
+                  setAttempt(null);
+                  void start();
+                }}
+              >
+                Start over
+              </Button>
+            </section>
             {error && (
               <p role="alert" className="rounded-lg border border-red-500 p-3 text-red-400">
                 {error}

@@ -21,7 +21,6 @@ const { refreshChatGptToken } =
   await import("../../open-sse/services/tokenRefresh/providers/chatgpt.ts");
 const { parseChatGptModels, discoverChatGptModels } =
   await import("../../src/lib/providerModels/chatgptDiscovery.ts");
-const { callbackDestination } = await import("../../scripts/cli/chatgpt-login.mjs");
 const { chatGptCallbackLink } = await import("../../src/shared/utils/chatgptCallback.ts");
 const { getChatGptHostId } = await import("../../src/lib/db/chatgpt.ts");
 const db = await import("../../src/lib/db/providers.ts");
@@ -76,6 +75,63 @@ test("management-only sign-in rejects unauthenticated and cross-origin requests 
   const text = await rejected.text();
   assert.ok(!text.includes("secret-code") && !text.includes("at /"));
   await POST(request("https://router.example", true, { action: "cancel", state: result.state }));
+});
+
+test("manual completion validates owner and callback before exchange and prevents replay", async (t) => {
+  const { POST } = await import("../../src/app/api/oauth/chatgpt/session/route.ts");
+  const { mintDashboardSessionToken } =
+    await import("../../src/shared/utils/dashboardSessionToken.ts");
+  const token = await mintDashboardSessionToken(new TextEncoder().encode(process.env.JWT_SECRET));
+  const send = (body: object) =>
+    POST(
+      new Request("https://router.example/api/oauth/chatgpt/session", {
+        method: "POST",
+        headers: {
+          host: "router.example",
+          origin: "https://router.example",
+          cookie: `auth_token=${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      })
+    );
+  const owner = createHash("sha256").update(`auth_token=${token}`).digest("hex");
+  const { attempt } = createChatGptAttempt("https://router.example", 1455, "test-host");
+  saveChatGptAttempt(attempt, owner);
+  let exchanges = 0;
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    exchanges++;
+    const form = init.body as URLSearchParams;
+    assert.equal(form.get("code"), "one-time-code");
+    assert.equal(form.get("client_id"), "oaiapp_test");
+    assert.equal(form.get("redirect_uri"), attempt.redirectUri);
+    assert.equal(form.get("code_verifier"), attempt.verifier);
+    return Response.json({ error: "fixture upstream rejection" }, { status: 400 });
+  });
+  const valid = `${attempt.redirectUri}?${new URLSearchParams({ code: "one-time-code", state: attempt.state, client_id: "oaiapp_test" })}`;
+  for (const callbackUrl of [
+    valid.replace("1455", "1456"),
+    valid.replace(attempt.state, "wrong"),
+    valid.replace("oaiapp_test", "dynamic_agent_client"),
+  ]) {
+    const response = await send({ action: "complete-url", state: attempt.state, callbackUrl });
+    assert.equal(response.status, 400);
+    assert.ok(!(await response.text()).includes("one-time-code"));
+    assert.equal(getChatGptAttempt(attempt.state, owner)?.phase, "pending");
+  }
+  saveChatGptAttempt(attempt, "other-owner");
+  assert.equal(
+    (await send({ action: "complete-url", state: attempt.state, callbackUrl: valid })).status,
+    400
+  );
+  assert.equal(exchanges, 0);
+  saveChatGptAttempt(attempt, owner);
+  const body = { action: "complete-url", state: attempt.state, callbackUrl: valid };
+  assert.equal((await send(body)).status, 400);
+  assert.equal(exchanges, 1);
+  assert.equal(getChatGptAttempt(attempt.state, owner)?.phase, "failed");
+  assert.equal((await send(body)).status, 400);
+  assert.equal(exchanges, 1);
 });
 
 test("SIWC uses independent dynamic registration, PKCE, nonce, resource and persistent host ID", () => {
@@ -152,18 +208,17 @@ test("OIDC validates signature, issuer, audience, expiration and nonce", async (
   );
 });
 
-test("callback helper and browser agree, keep code in fragment, reject untrusted schemes/origins", () => {
+test("browser callback keeps code in fragment and rejects untrusted schemes/origins", () => {
   const { attempt } = createChatGptAttempt("https://router.example", 1455, "host");
   const params = new URLSearchParams({
     state: attempt.state,
     code: "temporary-code",
     client_id: "oaiapp_test",
   });
-  const destination = callbackDestination(attempt.origin, params);
-  assert.equal(chatGptCallbackLink(params), destination);
+  const destination = chatGptCallbackLink(params)!;
+  assert.equal(new URL(destination).origin, attempt.origin);
   assert.equal(new URL(destination).search, "");
   assert.match(new URL(destination).hash, /temporary-code/);
-  assert.throws(() => callbackDestination("https://evil.example", params));
   for (const origin of [
     "javascript:alert(1)",
     "http://remote.example",
@@ -172,7 +227,6 @@ test("callback helper and browser agree, keep code in fragment, reject untrusted
   ]) {
     const state = `siwc.${Buffer.from(origin).toString("base64url")}.${"a".repeat(43)}`;
     assert.equal(chatGptCallbackLink(new URLSearchParams({ state })), null);
-    assert.throws(() => callbackDestination(origin, new URLSearchParams({ state })));
   }
 });
 
