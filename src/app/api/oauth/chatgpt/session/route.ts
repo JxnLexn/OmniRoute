@@ -202,7 +202,7 @@ export async function POST(request: Request) {
       entry.warning =
         "Signed in without plan usage. Sign in again and allow ChatGPT plan usage to enable models.";
     entry.phase = "done";
-    return json({ success: true, warning: entry.warning });
+    return json({ success: true, planAuthorized: permitted, warning: entry.warning });
   } catch {
     entry.phase = "failed";
     // Neither provider token bodies nor JWT validation errors belong in responses/logs.

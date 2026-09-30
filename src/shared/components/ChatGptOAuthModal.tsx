@@ -98,7 +98,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
       });
       if (current !== generation.current) return;
       stateRef.current = null;
-      setShowWelcome(shouldWelcomeChatGptPlan(!!connectionId));
+      setShowWelcome(result.planAuthorized === true && shouldWelcomeChatGptPlan(!!connectionId));
       setDone(true);
       setWarning(result.warning || "");
     } catch (err) {
