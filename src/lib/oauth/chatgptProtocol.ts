@@ -16,6 +16,7 @@ export const chatGptTokensSchema = z.object({
   token_type: z.string().refine((v) => v.toLowerCase() === "bearer"),
   expires_in: z.number().positive(),
   scope: z.string(),
+  earliest_refresh_at: z.union([z.string(), z.number()]).optional(),
 });
 export type ChatGptTokens = z.infer<typeof chatGptTokensSchema>;
 export type ChatGptAttempt = {

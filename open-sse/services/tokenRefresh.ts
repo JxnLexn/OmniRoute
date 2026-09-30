@@ -111,6 +111,7 @@ export const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 // Providers with non-rotating tokens (Google, Anthropic) or where multi-
 // account is naturally isolated keep longer lead times.
 export const REFRESH_LEAD_MS: Record<string, number> = {
+  chatgpt: 60_000, // Official SIWC local SDK refresh window.
   // Rotating refresh tokens — minimize refresh frequency to avoid the
   // "refresh-invalidates-siblings" cascade documented for OpenAI Auth0.
   codex: 5 * 60 * 1000, // 5 minutes
@@ -718,10 +719,17 @@ async function _refreshWithFreshCredentials(provider, credentials, log, proxyCon
               accessToken: dbConnection.accessToken,
               refreshToken: dbConnection.refreshToken,
               expiresAt: dbConnection.expiresAt,
+              ...(provider === "chatgpt"
+                ? { providerSpecificData: dbConnection.providerSpecificData }
+                : {}),
             };
           }
           credentials.refreshToken = dbConnection.refreshToken;
           credentials.accessToken = dbConnection.accessToken;
+          if (provider === "chatgpt") {
+            credentials.expiresAt = dbConnection.expiresAt;
+            credentials.providerSpecificData = dbConnection.providerSpecificData;
+          }
         }
       }
     } catch (e) {
