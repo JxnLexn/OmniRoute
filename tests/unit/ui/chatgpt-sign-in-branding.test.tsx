@@ -78,7 +78,10 @@ describe("ChatGPT sign-in branding", () => {
     );
     expect(link).toContain('target="_blank"');
     expect(link).toContain('rel="noreferrer"');
-    expect(link).toContain("Continue with ChatGPT");
+    expect(link).toContain("Sign in with ChatGPT");
+    expect(renderToStaticMarkup(<ChatGptSignInButton intent="continue" />)).toContain(
+      "Continue with ChatGPT"
+    );
     const busy = renderToStaticMarkup(<ChatGptSignInButton busy />);
     expect(busy).toContain('aria-busy="true"');
     expect(busy).toContain('disabled=""');
@@ -105,7 +108,7 @@ describe("ChatGPT sign-in branding", () => {
         ),
       ]) {
         if (providerId === "chatgpt") {
-          expect(html).toContain("Continue with ChatGPT");
+          expect(html).toContain("Sign in with ChatGPT");
           expect(html).toContain('aria-haspopup="dialog"');
           expect(html).toContain("chatgpt-logo-white.svg");
           expect(html).not.toContain(">addConnection<");
@@ -130,7 +133,7 @@ describe("ChatGPT sign-in branding", () => {
         )
       );
       const button = [...container.querySelectorAll("button")].find(
-        (node) => node.textContent === "Continue with ChatGPT"
+        (node) => node.textContent === "Sign in with ChatGPT"
       );
       expect(button).toBeDefined();
       act(() => button!.click());

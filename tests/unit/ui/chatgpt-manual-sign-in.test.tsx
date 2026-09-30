@@ -2,19 +2,30 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ChatGptOAuthModal from "@/shared/components/ChatGptOAuthModal";
 
 vi.mock("next-intl", async () => {
   const { createTranslator } = await import("use-intl/core");
   const { default: messages } = await import("@/i18n/messages/en.json");
-  const translator = createTranslator({ locale: "en", messages, namespace: "chatgptSignIn" });
-  return { useTranslations: () => translator };
+  const translators = {
+    chatgptSignIn: createTranslator({ locale: "en", messages, namespace: "chatgptSignIn" }),
+    providers: createTranslator({ locale: "en", messages, namespace: "providers" }),
+  };
+  return { useTranslations: (namespace: keyof typeof translators) => translators[namespace] };
 });
 
 vi.mock("@/shared/components/Modal", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+beforeEach(() => {
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    clear: () => values.clear(),
+  });
+});
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -38,7 +49,7 @@ it("offers manual paste without helper controls and completes the current attemp
   );
   const success = vi.fn();
   render(<ChatGptOAuthModal isOpen onClose={vi.fn()} onSuccess={success} />);
-  expect(await screen.findByRole("link", { name: "Continue with ChatGPT" })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: "Sign in with ChatGPT" })).toHaveAttribute(
     "href",
     "https://auth.openai.com/fixture"
   );
@@ -55,8 +66,39 @@ it("offers manual paste without helper controls and completes the current attemp
   expect(calls[1]).toEqual({ action: "complete-url", state: "test-state", callbackUrl: callback });
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.getByText("Catalog retry needed")).toBeDefined();
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(screen.getByText("You're using your ChatGPT plan")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Got it" }));
   expect(success).toHaveBeenCalledOnce();
+  expect(window.localStorage.getItem("omniroute.chatgpt.plan-welcome.v1")).toBe("acknowledged");
+});
+
+it("uses Continue for reauthentication and never repeats the welcome", async () => {
+  window.localStorage.clear();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url, init) =>
+      Response.json(
+        JSON.parse(init.body).action === "start"
+          ? { state: "test-state", authUrl: "https://auth.openai.com/fixture" }
+          : { success: true }
+      )
+    )
+  );
+  render(
+    <ChatGptOAuthModal
+      isOpen
+      onClose={vi.fn()}
+      onSuccess={vi.fn()}
+      reauthConnection={{ id: "fixture" }}
+    />
+  );
+  await screen.findByRole("link", { name: "Continue with ChatGPT" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Callback URL" }), {
+    target: { value: callback },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Complete sign-in" }));
+  await screen.findByRole("button", { name: "Done" });
+  expect(screen.queryByText("You're using your ChatGPT plan")).toBeNull();
 });
 
 it("cancels a pending attempt on close", async () => {

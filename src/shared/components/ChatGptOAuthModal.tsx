@@ -6,6 +6,8 @@ import { parseChatGptManualCallback } from "@/shared/utils/chatgptCallback";
 import Modal from "./Modal";
 import Button from "./Button";
 import ChatGptSignInButton from "./ChatGptSignInButton";
+import { ChatGptPlanWelcome } from "./ChatGptPlanUi";
+import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils/chatgptPlanUi";
 
 type Props = {
   isOpen: boolean;
@@ -39,6 +41,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
   const stateRef = useRef<string | null>(null);
   const generation = useRef(0);
   const [done, setDone] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const connectionId = reauthConnection?.id;
 
   const start = useCallback(async () => {
@@ -100,6 +103,7 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
       });
       if (current !== generation.current) return;
       stateRef.current = null;
+      setShowWelcome(shouldWelcomeChatGptPlan(!!connectionId));
       setDone(true);
       setWarning(result.warning || "");
     } catch (err) {
@@ -110,22 +114,35 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
     }
   }
 
+  function finish() {
+    if (showWelcome) acknowledgeChatGptPlan();
+    onSuccess();
+  }
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={done ? finish : onClose}
       title={t("title")}
       size="full"
       className="max-h-[90vh] overflow-y-auto"
     >
       <div className="space-y-6">
-        <p className="text-text-muted">{t("description")}</p>
-        <p className="rounded-lg border border-border p-3 text-sm">{t("eligibility")}</p>
+        {!done && (
+          <>
+            <p className="text-text-muted">{t("description")}</p>
+            <p className="rounded-lg border border-border p-3 text-sm">{t("eligibility")}</p>
+          </>
+        )}
         {done ? (
           <div className="space-y-4">
             <p role="status">{t("connected")}</p>
             {warning && <p className="rounded-lg border border-amber-500 p-3">{warning}</p>}
-            <Button onClick={onSuccess}>{t("done")}</Button>
+            {showWelcome ? (
+              <ChatGptPlanWelcome onDismiss={finish} />
+            ) : (
+              <Button onClick={finish}>{t("done")}</Button>
+            )}
           </div>
         ) : (
           <>
@@ -133,9 +150,16 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
               <h3 className="font-semibold">{t("signInStep")}</h3>
               <p className="text-sm text-text-muted">{t("signInHelp")}</p>
               {attempt ? (
-                <ChatGptSignInButton href={attempt.authUrl} />
+                <ChatGptSignInButton
+                  intent={connectionId ? "continue" : "signin"}
+                  href={attempt.authUrl}
+                />
               ) : (
-                <ChatGptSignInButton busy={busy} disabled />
+                <ChatGptSignInButton
+                  intent={connectionId ? "continue" : "signin"}
+                  busy={busy}
+                  disabled
+                />
               )}
             </section>
             <section className="space-y-3">

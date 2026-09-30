@@ -1,6 +1,11 @@
 "use client";
 
-import { CHATGPT_USAGE_URL } from "@omniroute/open-sse/config/chatgpt";
+import {
+  ChatGptManageUsageButton,
+  ChatGptUsageLimitNotice,
+} from "@/shared/components/ChatGptPlanUi";
+import ChatGptSignInButton from "@/shared/components/ChatGptSignInButton";
+import { hasChatGptUsageLimit } from "@/shared/utils/chatgptPlanUi";
 
 // Phase 1d extraction — Issue #3501
 // ConnectionRow (and its local helpers CooldownTimer, inferErrorType,
@@ -532,7 +537,7 @@ export default function ConnectionRow({
 
   return (
     <div
-      className={`group flex items-center justify-between p-3 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${connection.isActive === false ? "opacity-60" : ""}`}
+      className={`group flex items-center justify-between p-3 rounded-lg hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors ${isChatGpt ? "flex-wrap gap-3" : ""} ${connection.isActive === false ? "opacity-60" : ""}`}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {onToggleSelect && (
@@ -858,21 +863,10 @@ export default function ConnectionRow({
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {isChatGpt && (
-          <a
-            href={CHATGPT_USAGE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary whitespace-nowrap"
-            title={t("chatgptManageUsageTitle")}
-          >
-            <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
-              open_in_new
-            </span>
-            {t("chatgptManageUsage")}
-          </a>
-        )}
+      <div
+        className={`flex flex-wrap items-center justify-end gap-2 ${isChatGpt ? "max-w-full min-w-0" : ""}`}
+      >
+        {isChatGpt && <ChatGptManageUsageButton />}
         <Button
           size="sm"
           variant="ghost"
@@ -962,16 +956,21 @@ export default function ConnectionRow({
           onChange={onToggleActive}
           title={(connection.isActive ?? true) ? t("disableConnection") : t("enableConnection")}
         />
-        <div className="flex gap-1 ms-1 transition-opacity">
-          {onReauth && (
-            <button
-              onClick={onReauth}
-              className="p-2 hover:bg-amber-500/10 rounded text-amber-600 hover:text-amber-500"
-              title={t("reauthenticateConnection")}
-            >
-              <span className="material-symbols-outlined text-[18px]">passkey</span>
-            </button>
-          )}
+        <div
+          className={`flex gap-1 ms-1 transition-opacity ${isChatGpt ? "flex-wrap min-w-0 max-w-full items-center" : ""}`}
+        >
+          {onReauth &&
+            (isChatGpt ? (
+              <ChatGptSignInButton intent="continue" opensDialog onClick={onReauth} />
+            ) : (
+              <button
+                onClick={onReauth}
+                className="p-2 hover:bg-amber-500/10 rounded text-amber-600 hover:text-amber-500"
+                title={t("reauthenticateConnection")}
+              >
+                <span className="material-symbols-outlined text-[18px]">passkey</span>
+              </button>
+            ))}
           <button
             onClick={onEdit}
             className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded text-text-muted hover:text-primary"
@@ -995,6 +994,11 @@ export default function ConnectionRow({
           </button>
         </div>
       </div>
+      {hasChatGptUsageLimit(connection) && (
+        <div className="w-full pt-3">
+          <ChatGptUsageLimitNotice />
+        </div>
+      )}
       {isCodex && connection.codexAccountPool ? (
         <CodexAccountDetails pool={connection.codexAccountPool} />
       ) : null}

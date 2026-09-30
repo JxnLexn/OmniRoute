@@ -9,14 +9,22 @@ type Props = {
   disabled?: boolean;
   busy?: boolean;
   opensDialog?: boolean;
+  intent?: "signin" | "continue";
 };
 
 // Official SIWC wording and logo: https://developers.openai.com/siwc/website
 // Deliberately independent of OmniRoute's gradient/primary-color button styling.
-export default function ChatGptSignInButton({ href, onClick, disabled, busy, opensDialog }: Props) {
+export default function ChatGptSignInButton({
+  href,
+  onClick,
+  disabled,
+  busy,
+  opensDialog,
+  intent = "signin",
+}: Props) {
   const t = useTranslations("chatgptSignIn");
   const className =
-    "inline-flex min-h-11 max-w-full items-center justify-center gap-2.5 rounded-full border border-black bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-current disabled:cursor-not-allowed disabled:opacity-50 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200";
+    "inline-flex min-h-11 max-w-full items-center justify-center gap-2.5 rounded-xl border border-black bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-current disabled:cursor-not-allowed disabled:opacity-50 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200";
   const content = (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element -- bundled official SVGs, no image optimization needed */}
@@ -35,7 +43,7 @@ export default function ChatGptSignInButton({ href, onClick, disabled, busy, ope
         height={21}
         className="hidden shrink-0 dark:block"
       />
-      <span>{t("continue")}</span>
+      <span>{t(intent === "continue" ? "continue" : "signIn")}</span>
     </>
   );
   if (href) {
