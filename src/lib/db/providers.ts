@@ -488,7 +488,17 @@ export async function createProviderConnection(data: JsonRecord) {
   const workspaceId = toStringOrNull(providerSpecificData.workspaceId);
   const chatgptUserId = toStringOrNull(providerSpecificData.chatgptUserId);
 
-  if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
+  if (data.authType === "oauth" && data.provider === "chatgpt") {
+    // SIWC registrations are distinct even when their verified email is identical.
+    const { issuer, subject, clientId } = providerSpecificData;
+    if (!issuer || !subject || !clientId) throw new Error("Missing ChatGPT registration identity");
+    existing =
+      (db
+        .prepare(
+          "SELECT * FROM provider_connections WHERE provider = 'chatgpt' AND json_extract(provider_specific_data, '$.issuer') = ? AND json_extract(provider_specific_data, '$.subject') = ? AND json_extract(provider_specific_data, '$.clientId') = ?"
+        )
+        .get(issuer, subject, clientId) as JsonRecord | undefined) || null;
+  } else if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
     const strongSql = workspaceId
       ? "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND json_extract(provider_specific_data, '$.chatgptUserId') = ?"
       : "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND (json_extract(provider_specific_data, '$.workspaceId') IS NULL OR json_extract(provider_specific_data, '$.workspaceId') = '') AND json_extract(provider_specific_data, '$.chatgptUserId') = ?";

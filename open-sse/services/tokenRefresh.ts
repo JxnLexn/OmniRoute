@@ -53,6 +53,7 @@ import {
 } from "./antigravityProjectBootstrap.ts";
 import { persistDiscoveredAntigravityProjectId } from "./antigravityProjectPersist.ts";
 import { refreshCodexToken } from "./tokenRefresh/providers/codex.ts";
+import { refreshChatGptToken } from "./tokenRefresh/providers/chatgpt.ts";
 import { refreshCursorToken } from "./tokenRefresh/providers/cursor.ts";
 import { refreshOpenferenceToken } from "./tokenRefresh/providers/openference.ts";
 import { refreshKiroToken } from "./tokenRefresh/providers/kiro.ts";
@@ -416,6 +417,9 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
     case "codex":
       return await refreshCodexToken(credentials.refreshToken, log, proxyConfig);
 
+    case "chatgpt":
+      return await refreshChatGptToken(credentials, proxyConfig);
+
     case "cursor":
       if (!credentials.refreshToken) {
         return { error: "unrecoverable_refresh_error", code: "no_refresh_token" };
@@ -482,6 +486,7 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
  */
 export function supportsTokenRefresh(provider) {
   const explicitlySupported = new Set([
+    "chatgpt",
     "gemini",
     "antigravity",
     "agy",
@@ -634,12 +639,7 @@ export async function getAccessToken(
   // the legacy `connectionId`-less path would silently swallow the callback,
   // leaving DB rows out of sync with rotated tokens (Codex/OpenAI). We still
   // resolve the promise to all waiters with the refreshed credentials.
-  const refreshPromise = _getAccessTokenWithStalenessCheck(
-    provider,
-    credentials,
-    log,
-    proxyConfig
-  )
+  const refreshPromise = _getAccessTokenWithStalenessCheck(provider, credentials, log, proxyConfig)
     .then(async (result) => {
       if (result?.accessToken && effectiveOnPersist) {
         // #4038: same compare-and-swap guard as Layer 1 — skip the persist if a concurrent

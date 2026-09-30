@@ -1125,12 +1125,18 @@ async function loadAdvertisedModelsForConnections(
 ): Promise<Map<string, Set<string>>> {
   const advertised = new Map<string, Set<string>>();
   if (!requestedModel) return advertised;
+  // ChatGPT only accepts models advertised for that particular OAuth registration.
+  // Unknown/empty inventories fail closed, including DB read failures below.
+  for (const connection of connections) {
+    if (connection.provider === "chatgpt") advertised.set(connection.id, new Set());
+  }
 
   const inventoryProviders = new Set(
     connections
       .map((c) => c.provider)
       .filter(
-        (p): p is string => typeof p === "string" && (isSelfHostedChatProvider(p) || p === "codex")
+        (p): p is string =>
+          typeof p === "string" && (isSelfHostedChatProvider(p) || p === "codex" || p === "chatgpt")
       )
   );
   if (inventoryProviders.size === 0) return advertised;
@@ -1552,7 +1558,8 @@ export async function getProviderCredentials(
       }
       if (
         requestedModel &&
-        ((c.provider === "codex" && advertisedModelsByConnection.get(c.id)?.size === 0) ||
+        (((c.provider === "codex" || c.provider === "chatgpt") &&
+          advertisedModelsByConnection.get(c.id)?.size === 0) ||
           !isModelAdvertisedByConnection(requestedModel, advertisedModelsByConnection.get(c.id)))
       ) {
         connectionFilterStatus.set(c.id, "modelNotAdvertised");

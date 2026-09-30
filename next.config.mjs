@@ -277,6 +277,7 @@ const nextConfig = {
   },
   outputFileTracingRoot: projectRoot,
   outputFileTracingIncludes: {
+    "/api/oauth/chatgpt/helper": ["./scripts/cli/chatgpt-login.mjs"],
     // Migration SQL and compression rule/filter JSON files are read via fs at
     // runtime and are NOT always auto-traced by webpack/turbopack.
     "/*": [
@@ -479,7 +480,10 @@ const nextConfig = {
       // does the importing.
       const replacements = [
         [/^@\/mitm\/cert\/install$/, join(projectRoot, "src/mitm/cert/install.stub.ts")],
-        [/^@\/lib\/zed-oauth\/keychain-reader$/, join(projectRoot, "src/lib/zed-oauth/keychain-reader.stub.ts")],
+        [
+          /^@\/lib\/zed-oauth\/keychain-reader$/,
+          join(projectRoot, "src/lib/zed-oauth/keychain-reader.stub.ts"),
+        ],
         [/^@\/lib\/cloudSync$/, join(projectRoot, "src/lib/cloudSync.stub.ts")],
         [
           /^@\/lib\/services\/installers\/ninerouter$/,
