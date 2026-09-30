@@ -1120,12 +1120,12 @@ async function materializeConnection(
  *
  * Scoped to SELF_HOSTED_CHAT_PROVIDER_IDS: those are the providers where one
  * provider id fans out to several independent hosts with genuinely different
- * inventories. Hosted providers share one catalog per provider, so filtering
- * there would only add a DB read.
+ * inventories, and ChatGPT registrations whose catalogs are account-specific.
+ * Other hosted providers retain their existing selection behavior.
  *
  * Returns an empty map (= no filtering) when there is no model to match, when
- * no candidate is self-hosted, or when the persisted rows are malformed — a
- * partial read must never silently shrink the pool.
+ * no candidate needs inventory filtering, or self-hosted rows are malformed.
+ * ChatGPT alone fails closed when its account inventory is missing or malformed.
  */
 async function loadAdvertisedModelsForSelfHostedConnections(
   connections: ProviderConnectionView[],
@@ -1133,11 +1133,19 @@ async function loadAdvertisedModelsForSelfHostedConnections(
 ): Promise<Map<string, Set<string>>> {
   const advertised = new Map<string, Set<string>>();
   if (!requestedModel) return advertised;
+  // ChatGPT only accepts models advertised for that particular OAuth registration.
+  // Unknown/empty inventories fail closed, including DB read failures below.
+  for (const connection of connections) {
+    if (connection.provider === "chatgpt") advertised.set(connection.id, new Set());
+  }
 
   const selfHostedProviders = new Set(
     connections
       .map((c) => c.provider)
-      .filter((p): p is string => typeof p === "string" && isSelfHostedChatProvider(p))
+      .filter(
+        (p): p is string =>
+          typeof p === "string" && (isSelfHostedChatProvider(p) || p === "chatgpt")
+      )
   );
   if (selfHostedProviders.size === 0) return advertised;
 
@@ -1550,7 +1558,8 @@ export async function getProviderCredentials(
       }
       if (
         requestedModel &&
-        !isModelAdvertisedByConnection(requestedModel, advertisedModelsByConnection.get(c.id))
+        ((c.provider === "chatgpt" && advertisedModelsByConnection.get(c.id)?.size === 0) ||
+          !isModelAdvertisedByConnection(requestedModel, advertisedModelsByConnection.get(c.id)))
       ) {
         connectionFilterStatus.set(c.id, "modelNotAdvertised");
         return false;

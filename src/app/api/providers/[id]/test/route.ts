@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { discoverChatGptModels } from "@/lib/providerModels/chatgptDiscovery";
 import { z } from "zod";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { getCachedProviderConnectionById } from "@/lib/db/readCache";
@@ -353,6 +354,20 @@ export async function testOAuthConnection(
   connection: any,
   timeoutMs: number = OAUTH_TEST_TIMEOUT_MS
 ) {
+  if (connection.provider === "chatgpt") {
+    try {
+      await discoverChatGptModels(connection);
+      return {
+        valid: true,
+        error: null,
+        refreshed: false,
+        diagnosis: makeDiagnosis("ok", "oauth", null, null),
+      };
+    } catch {
+      const error = "ChatGPT live catalog unavailable. Check plan authorization or sign in again.";
+      return { valid: false, error, refreshed: false, diagnosis: classifyFailure({ error }) };
+    }
+  }
   const config = OAUTH_TEST_CONFIG[connection.provider];
 
   if (!config) {
