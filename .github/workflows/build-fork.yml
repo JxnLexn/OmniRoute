@@ -81,6 +81,9 @@ jobs:
           context: .
           target: runner-base
           platforms: linux/amd64
+          # Match the official release build; the full dashboard exceeds 6 GiB.
+          build-args: |
+            OMNIROUTE_BUILD_MEMORY_MB=12288
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
