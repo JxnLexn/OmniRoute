@@ -190,3 +190,86 @@ test("the public catalog keeps the union of active Codex account inventories", a
   assert.ok(ids.has("cx/gpt-pro-only-test"));
   assert.ok(ids.has("cx/gpt-shared-test"));
 });
+
+test("Codex reasoning-suffix aliases select the account that advertises the base model", async () => {
+  await resetStorage();
+  const proId = await createConnection({
+    provider: PROVIDER,
+    authType: "oauth",
+    accessToken: "test-codex-token",
+    name: "Pro account",
+    priority: 1,
+    isActive: true,
+  });
+  const plusId = await createConnection({
+    provider: PROVIDER,
+    authType: "oauth",
+    accessToken: "test-codex-token",
+    name: "Plus account",
+    priority: 2,
+    isActive: true,
+  });
+  // The synced inventories hold base ids only; the effort suffix is split off later, in the executor.
+  await modelsDb.replaceSyncedAvailableModelsForConnection(PROVIDER, proId, [
+    { id: "gpt-6-sol", name: "gpt-6-sol" },
+    { id: "gpt-6-luna", name: "gpt-6-luna" },
+  ]);
+  await modelsDb.replaceSyncedAvailableModelsForConnection(PROVIDER, plusId, [
+    { id: "gpt-6-luna", name: "gpt-6-luna" },
+  ]);
+
+  for (const suffixed of [
+    "gpt-6-sol-high",
+    "gpt-6-sol-xhigh",
+    "gpt-6-sol-max",
+    "gpt-6-sol-ultra",
+    "cx/gpt-6-sol-high",
+  ]) {
+    const selected = await auth.getProviderCredentials(PROVIDER, null, null, suffixed);
+    assert.equal(
+      selectedConnectionId(selected),
+      proId,
+      `${suffixed} must select the account advertising gpt-6-sol`
+    );
+    // Plus never advertised gpt-6-sol, so excluding pro must not fall back to it.
+    const failover = await auth.getProviderCredentials(PROVIDER, proId, null, suffixed);
+    assert.equal(
+      selectedConnectionId(failover),
+      null,
+      `${suffixed} must not fail over to an account without gpt-6-sol`
+    );
+  }
+});
+
+test("Codex suffixed request for a model no account advertises stays filtered", async () => {
+  await resetStorage();
+  const { proId, plusId } = await seedTwoAccounts();
+
+  for (const accountId of [proId, plusId]) {
+    const selected = await auth.getProviderCredentials(
+      PROVIDER,
+      null,
+      [accountId],
+      "gpt-unadvertised-test-high"
+    );
+    assert.equal(selectedConnectionId(selected), null);
+  }
+});
+
+test("Codex keeps matching an inventory id that already carries a reasoning suffix", async () => {
+  await resetStorage();
+  const proId = await createConnection({
+    provider: PROVIDER,
+    authType: "oauth",
+    accessToken: "test-codex-token",
+    name: "Pro account",
+    priority: 1,
+    isActive: true,
+  });
+  await modelsDb.replaceSyncedAvailableModelsForConnection(PROVIDER, proId, [
+    { id: "gpt-6-sol-high", name: "gpt-6-sol-high" },
+  ]);
+
+  const selected = await auth.getProviderCredentials(PROVIDER, null, null, "gpt-6-sol-high");
+  assert.equal(selectedConnectionId(selected), proId);
+});

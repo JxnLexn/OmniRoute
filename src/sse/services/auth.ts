@@ -140,17 +140,12 @@ import {
   resolveProviderId,
   NOAUTH_PROVIDERS,
   WEB_COOKIE_PROVIDERS,
-  isSelfHostedChatProvider,
 } from "@/shared/constants/providers";
+import { isModelExcludedByConnection } from "@/domain/connectionModelRules";
 import {
-  isModelExcludedByConnection,
-  isModelAdvertisedByConnection,
-} from "@/domain/connectionModelRules";
-import {
-  getSyncedAvailableModelsByConnection,
-  SYNCED_AVAILABLE_MODELS_MALFORMED,
-  type SyncedAvailableModelsByConnection,
-} from "@/lib/db/models";
+  isRequestedModelAdvertised,
+  loadAdvertisedModelsForConnections,
+} from "./connectionModelInventory";
 import { isFreeModel } from "@/shared/utils/freeModels";
 import {
   applySessionAffinityPin,
@@ -1114,56 +1109,6 @@ async function materializeConnection(
 }
 
 /**
- * Self-hosted hosts and Codex subscription accounts can advertise different
- * inventories. For Codex, once an account inventory is known, unsynchronized
- * accounts are not eligible guesses for models advertised by another account.
- * With no inventories at all, retain the existing bootstrap/offline behavior.
- */
-async function loadAdvertisedModelsForConnections(
-  connections: ProviderConnectionView[],
-  requestedModel: string | null
-): Promise<Map<string, Set<string>>> {
-  const advertised = new Map<string, Set<string>>();
-  if (!requestedModel) return advertised;
-
-  const inventoryProviders = new Set(
-    connections
-      .map((c) => c.provider)
-      .filter(
-        (p): p is string => typeof p === "string" && (isSelfHostedChatProvider(p) || p === "codex")
-      )
-  );
-  if (inventoryProviders.size === 0) return advertised;
-
-  await Promise.all(
-    [...inventoryProviders].map(async (providerId) => {
-      let byConnection: SyncedAvailableModelsByConnection;
-      try {
-        byConnection = await getSyncedAvailableModelsByConnection(providerId);
-      } catch {
-        return;
-      }
-      // Malformed persisted rows: fail open for the whole provider.
-      if (byConnection[SYNCED_AVAILABLE_MODELS_MALFORMED]) return;
-      if (
-        providerId === "codex" &&
-        Object.values(byConnection).some((models) => Array.isArray(models) && models.length > 0)
-      ) {
-        for (const connection of connections) {
-          if (connection.provider === providerId) advertised.set(connection.id, new Set());
-        }
-      }
-      for (const [connectionId, models] of Object.entries(byConnection)) {
-        if (!Array.isArray(models) || models.length === 0) continue;
-        advertised.set(connectionId, new Set(models.map((m) => m.id)));
-      }
-    })
-  );
-
-  return advertised;
-}
-
-/**
  * Get provider credentials from localDb
  * Filters out unavailable accounts and returns the selected account based on strategy
  * @param {string} provider - Provider name
@@ -1553,7 +1498,11 @@ export async function getProviderCredentials(
       if (
         requestedModel &&
         ((c.provider === "codex" && advertisedModelsByConnection.get(c.id)?.size === 0) ||
-          !isModelAdvertisedByConnection(requestedModel, advertisedModelsByConnection.get(c.id)))
+          !isRequestedModelAdvertised(
+            c.provider,
+            requestedModel,
+            advertisedModelsByConnection.get(c.id)
+          ))
       ) {
         connectionFilterStatus.set(c.id, "modelNotAdvertised");
         return false;
