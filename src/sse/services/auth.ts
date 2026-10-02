@@ -140,12 +140,9 @@ import {
   resolveProviderId,
   NOAUTH_PROVIDERS,
   WEB_COOKIE_PROVIDERS,
-  isSelfHostedChatProvider,
 } from "@/shared/constants/providers";
-import {
-  isModelExcludedByConnection,
-  isModelAdvertisedByConnection,
-} from "@/domain/connectionModelRules";
+import { isModelExcludedByConnection } from "@/domain/connectionModelRules";
+import { isAdvertisedInventoryProvider, isModelAdvertisedForConnection } from "./chatgptInventory";
 import {
   getSyncedAvailableModelsByConnection,
   SYNCED_AVAILABLE_MODELS_MALFORMED,
@@ -1133,19 +1130,11 @@ async function loadAdvertisedModelsForSelfHostedConnections(
 ): Promise<Map<string, Set<string>>> {
   const advertised = new Map<string, Set<string>>();
   if (!requestedModel) return advertised;
-  // ChatGPT only accepts models advertised for that particular OAuth registration.
-  // Unknown/empty inventories fail closed, including DB read failures below.
-  for (const connection of connections) {
-    if (connection.provider === "chatgpt") advertised.set(connection.id, new Set());
-  }
 
   const selfHostedProviders = new Set(
     connections
       .map((c) => c.provider)
-      .filter(
-        (p): p is string =>
-          typeof p === "string" && (isSelfHostedChatProvider(p) || p === "chatgpt")
-      )
+      .filter((p): p is string => typeof p === "string" && isAdvertisedInventoryProvider(p))
   );
   if (selfHostedProviders.size === 0) return advertised;
 
@@ -1558,8 +1547,7 @@ export async function getProviderCredentials(
       }
       if (
         requestedModel &&
-        ((c.provider === "chatgpt" && advertisedModelsByConnection.get(c.id)?.size === 0) ||
-          !isModelAdvertisedByConnection(requestedModel, advertisedModelsByConnection.get(c.id)))
+        !isModelAdvertisedForConnection(requestedModel, c, advertisedModelsByConnection)
       ) {
         connectionFilterStatus.set(c.id, "modelNotAdvertised");
         return false;

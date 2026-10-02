@@ -1,8 +1,4 @@
 import { NextResponse } from "next/server";
-import {
-  ChatGptDiscoveryError,
-  discoverChatGptModels,
-} from "@/lib/providerModels/chatgptDiscovery";
 import { z } from "zod";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { getCachedProviderConnectionById } from "@/lib/db/readCache";
@@ -52,7 +48,8 @@ export { classifyFailure, projectProviderRuntimeForPublicResponse } from "./publ
 // Match the API-key path's 30s timeout so a hung OAuth upstream cannot block the test queue.
 const OAUTH_TEST_TIMEOUT_MS = 30_000;
 
-import { CLI_RUNTIME_PROVIDER_MAP } from "./cliRuntimeProviderMap";
+import { CLI_RUNTIME_PROVIDER_MAP, hasQoderToken } from "./cliRuntimeProviderMap";
+import { chatGptReauthUpdate, testChatGptConnection } from "./chatgptTest";
 import { isOperatorDisabled } from "@/lib/providers/operatorDisable";
 import { getRequestPeerLocality } from "@/shared/utils/apiAuth";
 
@@ -60,19 +57,6 @@ import { getRequestPeerLocality } from "@/shared/utils/apiAuth";
 const providerConnectionTestBodySchema = z.object({
   validationModelId: z.string().max(500).optional(),
 });
-
-function hasQoderToken(connection: any): boolean {
-  if (typeof connection?.apiKey === "string" && connection.apiKey.trim().length > 0) return true;
-  const psd = connection?.providerSpecificData;
-  if (psd && typeof psd === "object") {
-    const pat =
-      (psd as Record<string, unknown>).personalAccessToken ??
-      (psd as Record<string, unknown>).pat ??
-      (psd as Record<string, unknown>).accessToken;
-    if (typeof pat === "string" && pat.trim().length > 0) return true;
-  }
-  return false;
-}
 
 // GHSA-jmq6-8j86-8xqj: getCliRuntimeStatus() spawns on the host (LOCAL_ONLY capability),
 // but these routes stay remote-reachable — only loopback/LAN callers and the scheduler probe.
@@ -357,33 +341,7 @@ export async function testOAuthConnection(
   connection: any,
   timeoutMs: number = OAUTH_TEST_TIMEOUT_MS
 ) {
-  if (connection.provider === "chatgpt") {
-    try {
-      await discoverChatGptModels(connection);
-      return {
-        valid: true,
-        error: null,
-        refreshed: false,
-        diagnosis: makeDiagnosis("ok", "oauth", null, null),
-      };
-    } catch (cause) {
-      const known = cause instanceof ChatGptDiscoveryError;
-      const error = toSafeMessage(
-        known ? cause.message : "ChatGPT live catalog is temporarily unavailable."
-      );
-      const requiresReauth = (known && cause.requiresReauth) || connection.testStatus === "expired";
-      const statusCode = known ? cause.status : 503;
-      return {
-        valid: false,
-        error,
-        statusCode,
-        refreshed: false,
-        diagnosis: requiresReauth
-          ? makeDiagnosis("token_expired", "oauth", error, "expired")
-          : classifyFailure({ error, statusCode }),
-      };
-    }
-  }
+  if (connection.provider === "chatgpt") return testChatGptConnection(connection);
   const config = OAUTH_TEST_CONFIG[connection.provider];
 
   if (!config) {
@@ -1123,8 +1081,6 @@ export async function testSingleConnection(
   const isTerminalFailure =
     !result.valid &&
     terminalTestStatuses.has(String(diagnosis.code ?? diagnosis.type ?? "").toLowerCase());
-  const chatGptReauthRequired =
-    provider === "chatgpt" && !result.valid && diagnosis.code === "expired";
   const testFailureCooldownMs = result.valid ? 0 : 30_000; // 30s retry window
 
   // A successful credential probe proves the KEY is valid. It does NOT prove the
@@ -1143,13 +1099,7 @@ export async function testSingleConnection(
   const lastErrorType = result.valid ? connection.lastErrorType : diagnosis.type;
 
   const updateData: Record<string, any> = {
-    testStatus: chatGptReauthRequired
-      ? "expired"
-      : clearErrorState
-        ? "active"
-        : result.valid
-          ? connection.testStatus
-          : "error",
+    testStatus: clearErrorState ? "active" : result.valid ? connection.testStatus : "error",
     // A passing test is the sole activation signal under the "only advertise tested-working
     // connections" default (POST /api/providers creates connections isActive:false). Only ever
     // flips ON: a failing test leaves isActive untouched (a transient failure must not take a
@@ -1170,14 +1120,14 @@ export async function testSingleConnection(
       : result.valid
         ? connection.errorCode
         : diagnosis.code || result.statusCode || null,
-    rateLimitedUntil:
-      clearErrorState || chatGptReauthRequired
-        ? null
-        : isTerminalFailure
+    rateLimitedUntil: clearErrorState
+      ? null
+      : isTerminalFailure
+        ? connection.rateLimitedUntil || null
+        : result.valid
           ? connection.rateLimitedUntil || null
-          : result.valid
-            ? connection.rateLimitedUntil || null
-            : new Date(Date.now() + testFailureCooldownMs).toISOString(),
+          : new Date(Date.now() + testFailureCooldownMs).toISOString(),
+    ...chatGptReauthUpdate(provider, result, diagnosis),
   };
 
   if (clearErrorState) {

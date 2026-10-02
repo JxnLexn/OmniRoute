@@ -38,7 +38,16 @@ export function providerUsesCuratedModelsOnly(providerId: string): boolean {
  */
 export function providerUsesExclusiveSyncedListing(providerId: string): boolean {
   const id = providerId.trim().toLowerCase();
-  return id === "cursor" || id === "cu" || id === "chatgpt";
+  return providerIsCursor(id) || id === "chatgpt";
+}
+
+/**
+ * Cursor-specific listing behavior (`owned_by: "cursor"` + synthetic `auto*`
+ * router rows). Exclusive-listing providers other than Cursor must not inherit it.
+ */
+export function providerIsCursor(providerId: string): boolean {
+  const id = providerId.trim().toLowerCase();
+  return id === "cursor" || id === "cu";
 }
 
 /**

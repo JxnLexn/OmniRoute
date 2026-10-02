@@ -16,6 +16,8 @@ import { createLazyRowProxy } from "./providers/lazyConnectionView";
 import { invalidateDbCache, getCachedRawProviderConnections } from "./readCache";
 import { invalidateConnectionUpdate } from "./readCache";
 import { reorderConnections } from "./providers/deletion";
+import { findChatGptConnectionByRegistration } from "./chatgpt";
+import { sanitizeMergedConnectionOverrides } from "./providers/connectionUpdateSanitize";
 import {
   removeConnectionHealth,
   removeConnectionIndex,
@@ -489,15 +491,7 @@ export async function createProviderConnection(data: JsonRecord) {
   const chatgptUserId = toStringOrNull(providerSpecificData.chatgptUserId);
 
   if (data.authType === "oauth" && data.provider === "chatgpt") {
-    // SIWC registrations are distinct even when their verified email is identical.
-    const { issuer, subject, clientId } = providerSpecificData;
-    if (!issuer || !subject || !clientId) throw new Error("Missing ChatGPT registration identity");
-    existing =
-      (db
-        .prepare(
-          "SELECT * FROM provider_connections WHERE provider = 'chatgpt' AND json_extract(provider_specific_data, '$.issuer') = ? AND json_extract(provider_specific_data, '$.subject') = ? AND json_extract(provider_specific_data, '$.clientId') = ?"
-        )
-        .get(issuer, subject, clientId) as JsonRecord | undefined) || null;
+    existing = findChatGptConnectionByRegistration(providerSpecificData);
   } else if (data.authType === "oauth" && data.provider === "codex" && chatgptUserId) {
     const strongSql = workspaceId
       ? "SELECT * FROM provider_connections WHERE provider = ? AND auth_type = 'oauth' AND json_extract(provider_specific_data, '$.workspaceId') = ? AND json_extract(provider_specific_data, '$.chatgptUserId') = ?"
@@ -1010,28 +1004,7 @@ export async function updateProviderConnection(id: string, data: JsonRecord) {
         existingCamel.providerSpecificData
       )
     );
-    // Mirror the sanitization the create path applies — keep the returned
-    // object in lockstep with what we persist.
-    if ("quotaWindowThresholds" in merged) {
-      const result = sanitizeQuotaWindowThresholds(merged.quotaWindowThresholds);
-      if (result.rejected.length > 0) {
-        throw new Error(
-          `Refusing to persist quotaWindowThresholds with rejected keys: ${result.rejected.join(", ")}`
-        );
-      }
-      // For updates we always carry the key forward (even as null) so the read
-      // path surfaces the cleared state to callers that merged it.
-      merged.quotaWindowThresholds = result.sanitized;
-    }
-    if ("rateLimitOverrides" in merged) {
-      const result = sanitizeRateLimitOverrides(merged.rateLimitOverrides);
-      if (result.rejected.length > 0) {
-        throw new Error(
-          `Refusing to persist rateLimitOverrides with rejected keys: ${result.rejected.join(", ")}`
-        );
-      }
-      merged.rateLimitOverrides = result.sanitized;
-    }
+    sanitizeMergedConnectionOverrides(merged);
     const existingRecord = toRecord(existing);
 
     reconcileCodexUsageHistory(db, {
