@@ -859,7 +859,18 @@ async function handleComboChatInner({
   const quotaCutoffResetWindowConfig = resolveResetWindowConfig(config as Record<string, unknown>);
 
   if (activeNativeTurnPin) {
-    const pinnedTargets = applyNativeCodexTurnPin(orderedTargets, activeNativeTurnPin);
+    const activeConnections = (await getCachedProviderConnections({
+      provider: resolveProviderId(activeNativeTurnPin.provider),
+      isActive: true,
+    })) as Array<Record<string, unknown>>;
+    const activeConnectionIds = activeConnections
+      .map((connection) => String(connection.id))
+      .filter((id) => !apiKeyAllowedConnections?.length || apiKeyAllowedConnections.includes(id));
+    const pinnedTargets = applyNativeCodexTurnPin(
+      orderedTargets,
+      activeNativeTurnPin,
+      activeConnectionIds
+    );
     if (pinnedTargets.length === 0) {
       // Pinned model no longer exists in the combo — release pin and fall through
       // to full combo routing so the turn can continue with a healthy model.
