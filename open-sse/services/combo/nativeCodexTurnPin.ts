@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildErrorBody } from "../../utils/error.ts";
-import { isModelLocked, hasPerModelQuota } from "../accountFallback.ts";
+import { isModelLocked, hasPerModelQuota, getModelLockoutInfo } from "../accountFallback.ts";
 import { isProviderInCooldown } from "../providerCooldownTracker.ts";
 import { getCircuitBreaker } from "../../../src/shared/utils/circuitBreaker.ts";
 import type { ResilienceSettings } from "../../../src/lib/resilience/settings";
@@ -249,6 +249,56 @@ export function createPinnedModelUnavailableResponse(): Response {
     status: 400,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+/** A timed capacity failure does not invalidate the client's continuation. */
+export function createPinnedModelRetryResponse(targets: ResolvedComboTarget[]): Response | null {
+  const retryableReasons = new Set([
+    "quota_exhausted",
+    "rate_limit",
+    "rate_limited",
+    "rate_limit_exceeded",
+    "server_error",
+    "overloaded",
+    "transient",
+    "circuit_open",
+  ]);
+  const locks = targets
+    .flatMap((target) => {
+      const info = getModelLockoutInfo(
+        target.provider,
+        target.connectionId || "",
+        parseModel(target.modelStr).model || target.modelStr
+      );
+      return info &&
+        Number.isFinite(info.remainingMs) &&
+        info.remainingMs > 0 &&
+        retryableReasons.has(info.reason)
+        ? [info]
+        : [];
+    })
+    .sort((a, b) => a.remainingMs - b.remainingMs);
+  const next = locks[0];
+  if (!next) return null;
+  const quota = ["quota_exhausted", "rate_limit", "rate_limited", "rate_limit_exceeded"].includes(
+    next.reason
+  );
+  const status = quota ? 429 : 503;
+  const seconds = Math.max(1, Math.ceil(next.remainingMs / 1000));
+  return new Response(
+    JSON.stringify(
+      buildErrorBody(
+        status,
+        "The model serving this turn is temporarily unavailable. Retry this same request after the cooldown; the turn binding is preserved.",
+        undefined,
+        {
+          code: "model_cooldown",
+          type: quota ? "rate_limit_error" : "server_error",
+        }
+      )
+    ),
+    { status, headers: { "Content-Type": "application/json", "Retry-After": String(seconds) } }
+  );
 }
 
 export interface CheckPinnedTargetsModelScopedUnusableOptions {
