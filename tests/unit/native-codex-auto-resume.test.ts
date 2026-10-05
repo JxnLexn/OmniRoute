@@ -71,6 +71,11 @@ test.after(async () => {
 });
 
 beforeEach(async () => {
+  // Each scenario owns its accounts; sibling failover must not see fixtures
+  // left behind by earlier scenarios in this suite.
+  for (const connection of await providersDb.getProviderConnections()) {
+    await providersDb.deleteProviderConnection(connection.id);
+  }
   clearAllModelLockouts();
   clearCooldownState();
   resetAllCircuitBreakers();
