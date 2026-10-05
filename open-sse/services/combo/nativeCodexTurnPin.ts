@@ -425,6 +425,8 @@ export async function isPinnedTargetModelScopedUnusable(args: {
    * without that wait, so for it a lock still means unusable.
    */
   allowWaitableLock?: boolean;
+  /** Pin failure requires model-specific evidence, not account availability. */
+  modelScopedOnly?: boolean;
 }): Promise<boolean> {
   const {
     target,
@@ -460,6 +462,14 @@ export async function isPinnedTargetModelScopedUnusable(args: {
 
   const lock = evaluatePinnedModelLock(target, resilienceSettings, args.allowWaitableLock);
   if (lock.modelLocked && !lock.lockWaitable) return true;
+
+  // Account quota, cooldown, capacity, and policy failures do not prove that
+  // the model itself is unusable. Keep the pin and let the normal dispatch
+  // gates return their retryable unavailability response. In particular, a
+  // boolean availability miss must not terminate opaque continuation state or
+  // switch a healthy model just because its accounts are temporarily blocked.
+  // Alternate selection still performs all availability checks below.
+  if (args.modelScopedOnly) return false;
 
   if (
     process.env.OMNIROUTE_QUOTA_AWARE_ROUTING === "1" &&
@@ -507,7 +517,12 @@ export async function areAllPinnedTargetsModelScopedUnusable(
   if (!options.pinnedTargets?.length) return false;
   for (const target of options.pinnedTargets) {
     if (
-      !(await isPinnedTargetModelScopedUnusable({ target, ...options, allowWaitableLock: true }))
+      !(await isPinnedTargetModelScopedUnusable({
+        target,
+        ...options,
+        allowWaitableLock: true,
+        modelScopedOnly: true,
+      }))
     ) {
       return false;
     }
