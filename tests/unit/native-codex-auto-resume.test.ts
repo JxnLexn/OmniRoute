@@ -71,9 +71,10 @@ test.after(async () => {
 });
 
 beforeEach(async () => {
-  // Each scenario owns its accounts; sibling failover must not see fixtures
-  // left behind by earlier scenarios in this suite.
-  for (const connection of await providersDb.getProviderConnections()) {
+  // Each scenario owns its accounts. Since #15481 dynamic turn-pin targets expand
+  // over the active pool, so fixtures left behind by earlier scenarios would
+  // otherwise become legitimate healthy siblings.
+  for (const connection of await providersDb.getProviderConnections({})) {
     await providersDb.deleteProviderConnection(connection.id);
   }
   clearAllModelLockouts();
