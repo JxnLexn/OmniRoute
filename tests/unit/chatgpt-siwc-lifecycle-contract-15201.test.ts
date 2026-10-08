@@ -413,3 +413,48 @@ test("SIWC failure paths answer with sanitized buildErrorBody errors and never l
   assertSafeError(revokedBody);
   assert.match(revokedBody.error.message, /sign in again/i);
 });
+
+test("models route serves the live ChatGPT catalog and hides upstream failure detail", async (t) => {
+  const { GET } = await import("../../src/app/api/providers/[id]/models/route.ts");
+  const connection = await db.createProviderConnection({
+    provider: "chatgpt",
+    authType: "oauth",
+    name: "Models route",
+    accessToken: "route-access",
+    refreshToken: "route-refresh",
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    providerSpecificData: {
+      issuer: "https://auth.openai.com",
+      subject: "route-user",
+      clientId: "oaiapp_route",
+      scopes: [CHATGPT_PLAN_SCOPE],
+    },
+  });
+  const request = () =>
+    new Request(`${ORIGIN}/api/providers/${connection.id}/models`, {
+      headers: { host: "router.example" },
+    });
+  const context = { params: Promise.resolve({ id: String(connection.id) }) };
+  let status = 200;
+  t.mock.method(globalThis, "fetch", async (input: string | URL, init: RequestInit = {}) => {
+    assert.equal(String(input), "https://api.openai.com/v1/models");
+    assert.equal(new Headers(init.headers).get("authorization"), "Bearer route-access");
+    return status === 200
+      ? Response.json({ models: [{ slug: "gpt-route", visibility: "list" }] })
+      : Response.json({ error: "SECRET-CATALOG-BODY" }, { status });
+  });
+  const ok = await GET(request(), context);
+  assert.equal(ok.status, 200);
+  const body = await ok.json();
+  assert.equal(body.source, "api");
+  assert.deepEqual(
+    body.models.map((m: { id: string }) => m.id),
+    ["gpt-route"]
+  );
+  status = 401;
+  const failed = await GET(request(), context);
+  assert.equal(failed.status, 503);
+  const failure = await failed.json();
+  assertSafeError(failure);
+  assert.match(failure.error.message, /live catalog unavailable/i);
+});
