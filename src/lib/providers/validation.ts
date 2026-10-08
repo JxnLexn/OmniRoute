@@ -79,7 +79,6 @@ import {
   validateNousResearchProvider,
   validatePoeProvider,
 } from "./validation/audioMiscProviders";
-import { validateChatGptWebCodexProvider } from "./validation/chatgptWebCodex";
 import { validateZaiWebProvider } from "./validation/zaiWeb";
 import { validateSearchProvider, SEARCH_VALIDATOR_CONFIGS } from "./validation/searchProviders";
 import {
@@ -108,6 +107,7 @@ import {
 } from "./validation/webCookie";
 import { validateAiHordeProvider } from "./validation/aihorde";
 import { validateDifyProvider } from "./validation/dify";
+import { validateZyloApiProvider } from "./validation/zylo";
 import { validateAdobeFireflyProvider } from "./validation/adobeFirefly";
 import {
   validateV0VercelProvider,
@@ -122,6 +122,7 @@ import {
   validateNvidiaProvider,
   validateZaiProvider,
   validateXiaomiMimoProvider,
+  validateXiaomiMimoTokenPlanProvider,
   buildGitlawbValidators,
 } from "./validation/specialtyInline";
 // validateCommandCodeProvider + validateClaudeCodeCompatibleProvider have external importers
@@ -175,7 +176,16 @@ export async function validateFreebuffProvider({ apiKey }: { apiKey: string }) {
   }
 }
 
-export async function validateProviderApiKey({ provider, apiKey, providerSpecificData = {} }: any) {
+export async function validateProviderApiKey({
+  provider,
+  apiKey,
+  providerSpecificData = {},
+  // S-01 (#15159): forwarded to specialty validators that can reach a local spawn
+  // (currently only the devin cloud-agent CLI fallback). Remote-reachable routes
+  // pass `false` for non-loopback callers; direct/internal callers keep the
+  // permissive default. See validateDevinCloudAgentProvider for the rationale.
+  allowLocalSpawn = true,
+}: any) {
   provider = typeof provider === "string" ? resolveProviderId(provider) : provider;
   const requiresApiKey = !providerAllowsOptionalApiKey(provider);
   const isLocal = isLocalProvider(provider);
@@ -220,7 +230,10 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     // "devin" is the Cognition cloud-agent provider (distinct from the "devin-cli"
     // LLM/ACP provider, which is already registered in providerRegistry). Wired here
     // for parity with the "jules" cloud-agent entry above — see #6142.
-    devin: validateDevinCloudAgentProvider,
+    // S-01 (#15159): wrapped so the local CLI-spawn fallback receives allowLocalSpawn;
+    // a bare reference would silently drop the flag and let a remote caller spawn.
+    devin: ({ apiKey, allowLocalSpawn }: any) =>
+      validateDevinCloudAgentProvider({ apiKey, allowLocalSpawn }),
     auggie: validateAuggieProvider,
     "cursor-api": validateCursorApiProvider,
     aihorde: validateAiHordeProvider,
@@ -241,6 +254,16 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     // #5422: auth-only probe — Bytez 404s on every chat model until the account adds it to
     // its catalog, so the generic chat probe can't validate a fresh key.
     bytez: validateBytezProvider,
+    // #13828: Zylo serves GET /v1/models WITHOUT authentication — 200 with no Authorization
+    // header, and 200 for a bogus key. The generic OpenAI-like probe returns on the first 2xx
+    // from that route, so the setup dialog greened any string and the user only discovered the
+    // key was rejected when their own model test came back `401 {"error":"Key not found: zk-…"}`.
+    // Probe the chat route, which is the one Zylo actually authenticates.
+    "zylo-api": validateZyloApiProvider,
+    // Registered under the alias too: connections are commonly stored as "zylo" (same prefix as
+    // the zylo/<model> routing ids), and the alias must not fall back to the open-catalog probe.
+    // Same shape as the adobe-firefly/firefly pair above.
+    zylo: validateZyloApiProvider,
     deepgram: validateDeepgramProvider,
     assemblyai: validateAssemblyAIProvider,
     "rev-ai": validateRevAiProvider,
@@ -308,7 +331,13 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     "zai-web": validateZaiWebProvider,
     "grok-web": validateGrokWebProvider,
     "kimi-web": validateKimiWebProvider,
-    "chatgpt-web-codex": validateChatGptWebCodexProvider,
+    "chatgpt-web-codex": (input: {
+      apiKey?: string;
+      providerSpecificData?: Record<string, unknown>;
+    }) =>
+      import("./validation/chatgptWebCodex").then((mod) =>
+        mod.validateChatGptWebCodexProvider(input)
+      ),
     "perplexity-web": validatePerplexityWebProvider,
     "blackbox-web": validateBlackboxWebProvider,
     "muse-spark-web": validateMuseSparkWebProvider,
@@ -344,6 +373,8 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
     zai: validateZaiProvider,
     "xiaomi-mimo": ({ apiKey, providerSpecificData }: any) =>
       validateXiaomiMimoProvider({ apiKey, providerSpecificData, isLocal }),
+    "xiaomi-mimo-token-plan": ({ apiKey, providerSpecificData }: any) =>
+      validateXiaomiMimoTokenPlanProvider({ apiKey, providerSpecificData, isLocal }),
     // Gitlawb Opengateway — Xiaomi MiMo compatible, same /models endpoint limitation.
     // Bypass /models probe in favor of chat/completions, matching xiaomi-mimo's pattern.
     // Uses a factory to share validation logic across Opengateway provider variants.
@@ -368,7 +399,11 @@ export async function validateProviderApiKey({ provider, apiKey, providerSpecifi
 
   if (SPECIALTY_VALIDATORS[provider]) {
     try {
-      return await SPECIALTY_VALIDATORS[provider]({ apiKey, providerSpecificData });
+      return await SPECIALTY_VALIDATORS[provider]({
+        apiKey,
+        providerSpecificData,
+        allowLocalSpawn,
+      });
     } catch (error: any) {
       return toValidationErrorResult(error);
     }

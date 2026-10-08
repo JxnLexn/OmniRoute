@@ -34,6 +34,8 @@ export interface ApiKeyPermissionsUpdate {
   weeklyUsageLimitUsd?: number | null;
   chaosModeEnabled?: boolean;
   compressionEnabled?: boolean;
+  allowAutoCombos?: boolean;
+  catalogScope?: "all" | "combos" | "models";
 }
 
 export function normalizeApiKeyPermissionsUpdate(
@@ -76,5 +78,7 @@ export function normalizeApiKeyPermissionsUpdate(
     weeklyUsageLimitUsd: update.weeklyUsageLimitUsd,
     chaosModeEnabled: update.chaosModeEnabled,
     compressionEnabled: update.compressionEnabled,
+    allowAutoCombos: update.allowAutoCombos,
+    catalogScope: update.catalogScope,
   };
 }

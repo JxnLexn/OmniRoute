@@ -769,6 +769,17 @@ test("getProviderCredentials refuses a forced pin outside allowedConnections ins
   // policy-allowed pool keeps its constraint — resolution yields no credential instead
   // of silently continuing on another connection. The policy-blocked connection must
   // never be selected, and the allowed one must not be picked behind the caller's back.
+  // #13879 returns the key-policy diagnostic here instead of a bare null — the shape
+  // the terminal-state path has used since #12441 — so chat answers 403 rather than
+  // the generic "No active credentials". deepEqual pins it exactly, which is what
+  // #12080 needs: no apiKey/accessToken/connectionId, and neither connection leaks.
+  assert.deepEqual(selected, { blockedByKeyPolicy: true, blockedCount: 1 });
+});
+
+test("an inactive allowed account is unavailable, not an API-key permission denial", async () => {
+  const inactive = await seedConnection("openai", { isActive: false });
+  await seedConnection("openai");
+  const selected = await auth.getProviderCredentials("openai", null, [inactive.id]);
   assert.equal(selected, null);
 });
 
@@ -1551,7 +1562,7 @@ test("markAccountUnavailable uses a connection-wide cooldown for non-local 404 e
   const result = await auth.markAccountUnavailable(
     connection.id,
     404,
-    "model not found",
+    "404 page not found",
     "openai",
     "gpt-missing"
   );
@@ -1572,7 +1583,7 @@ test("markAccountUnavailable auto-disables permanently banned accounts when the 
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended", // #14848: "Verify your account…" is no longer a ban
     "openai",
     "gpt-4o"
   );
@@ -1596,7 +1607,7 @@ test("markAccountUnavailable keeps prepaid API keys active when auto-disable sco
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended",
     "openai",
     "gpt-4o"
   );
@@ -1622,7 +1633,7 @@ test("markAccountUnavailable still auto-disables OAuth accounts when scope is su
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended",
     "claude",
     "claude-sonnet"
   );
@@ -1642,7 +1653,7 @@ test("markAccountUnavailable leaves permanently banned accounts active when auto
   const result = await auth.markAccountUnavailable(
     connection.id,
     401,
-    "Verify your account to continue",
+    "Your account has been suspended",
     "openai",
     "gpt-4o"
   );
@@ -1686,7 +1697,7 @@ test("markAccountUnavailable swallows auto-disable persistence errors", async ()
     const result = await auth.markAccountUnavailable(
       connection.id,
       401,
-      "Verify your account to continue",
+      "Your account has been suspended",
       "openai",
       "gpt-4o"
     );
