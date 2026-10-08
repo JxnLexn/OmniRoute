@@ -55,6 +55,7 @@ import { useOpenRouterPresetControl } from "../OpenRouterPresetInput";
 import WebSessionCredentialGuide from "../WebSessionCredentialGuide";
 import HarImportButton from "../HarImportButton";
 import CcCompatibleRequestDefaultsFields from "./CcCompatibleRequestDefaultsFields";
+import type { ApiKeyHealthMap } from "./connectionApiKeyHealth";
 import ClaudeConnectionFields from "./ClaudeConnectionFields";
 import {
   claudeConnectionFieldPatch,
@@ -187,18 +188,7 @@ export default function EditConnectionModal({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [extraApiKeys, setExtraApiKeys] = useState<string[]>([]);
   const [newExtraKey, setNewExtraKey] = useState("");
-  const [apiKeyHealth, setApiKeyHealth] = useState<
-    Record<
-      string,
-      {
-        status: "active" | "warning" | "invalid";
-        failures: number;
-        lastFailure: string | null;
-        totalRequests?: number;
-        totalFailures?: number;
-      }
-    >
-  >({});
+  const [apiKeyHealth, setApiKeyHealth] = useState<ApiKeyHealthMap>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const showEmail = useEmailPrivacyStore((state) => state.emailsVisible);
   // #6147 — built-in providers can opt in to an advanced base-URL override.
@@ -430,18 +420,7 @@ export default function EditConnectionModal({
       });
       const existing = connection.providerSpecificData?.extraApiKeys;
       setExtraApiKeys(Array.isArray(existing) ? existing : []);
-      const health = connection.providerSpecificData?.apiKeyHealth as
-        | Record<
-            string,
-            {
-              status: "active" | "warning" | "invalid";
-              failures: number;
-              lastFailure: string | null;
-              totalRequests?: number;
-              totalFailures?: number;
-            }
-          >
-        | undefined;
+      const health = connection.providerSpecificData?.apiKeyHealth as ApiKeyHealthMap | undefined;
       setApiKeyHealth(health || {});
       setNewExtraKey("");
       setOpenRouterPreset(existingOpenRouterPreset);
