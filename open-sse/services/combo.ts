@@ -89,13 +89,13 @@ export {
 };
 import {
   applyNativeCodexTurnPin,
-  areAllPinnedTargetsModelScopedUnusable,
   canAutoResumeNativeCodexTurn,
   createPinnedModelUnavailableResponse,
   createPinnedModelRetryResponse,
   getNativeCodexTurnPin,
   describePinnedTargetsLock,
   releaseNativeCodexTurnPin,
+  resolvePinnedTurnUnusable,
   resolvePinnedTargetsLockWaitMs,
 } from "./combo/nativeCodexTurnPin.ts";
 import { waitForCooldownAwareRetry } from "../../src/sse/services/cooldownAwareRetry.ts";
@@ -931,26 +931,32 @@ async function handleComboChatInner({
         `Native Codex turn pin released: pinned model ${activeNativeTurnPin.modelStr} no longer in combo; falling back to full combo routing`
       );
     } else {
-      const allPinnedUnusable = await areAllPinnedTargetsModelScopedUnusable({
-        pinnedTargets,
-        resilienceSettings,
-        quotaCutoffResetWindowConfig,
-        comboName: combo.name,
-        body: body as Record<string, unknown>,
-        log,
-        isModelAvailable,
-      });
-      if (allPinnedUnusable) {
-        const autoResumeEligibility = await canAutoResumeNativeCodexTurn({
+      const resumePin = activeNativeTurnPin; // narrowed non-null here; the closure loses it
+      const evaluateAutoResume = () =>
+        canAutoResumeNativeCodexTurn({
           body: body as Record<string, unknown>,
           comboName: combo.name,
-          activePin: activeNativeTurnPin,
+          activePin: resumePin,
           allTargets: orderedTargets,
           resilienceSettings,
           quotaCutoffResetWindowConfig,
           isModelAvailable,
           log,
         });
+      const pinCheck = await resolvePinnedTurnUnusable(
+        {
+          pinnedTargets,
+          resilienceSettings,
+          quotaCutoffResetWindowConfig,
+          comboName: combo.name,
+          body: body as Record<string, unknown>,
+          log,
+          isModelAvailable,
+        },
+        evaluateAutoResume
+      );
+      if (pinCheck.unusable) {
+        const autoResumeEligibility = pinCheck.decision ?? (await evaluateAutoResume());
 
         if (autoResumeEligibility.eligible === true) {
           const selectedAlternate = autoResumeEligibility.selectedTarget;

@@ -60,7 +60,9 @@ test("same single-model native turn resumes after quota lock clears", async () =
   assert.equal(dispatched, 2);
 });
 
-for (const continuation of ["opaque", "pending-tool", "plain"]) {
+// A plain turn (no opaque state, no pending tool call) is NOT pinned through an account
+// block: it auto-resumes on the healthy alternate (#13180/#13564) — see the test below.
+for (const continuation of ["opaque", "pending-tool"]) {
   test(`account availability without a model lock preserves the ${continuation} turn`, async () => {
     clearAllModelLockouts();
     clearNativeCodexTurnPinsForTests();
@@ -122,6 +124,49 @@ for (const continuation of ["opaque", "pending-tool", "plain"]) {
     assert.equal(dispatched, 2);
   });
 }
+
+test("account availability without a model lock auto-resumes a plain turn on the healthy alternate", async () => {
+  clearAllModelLockouts();
+  clearNativeCodexTurnPinsForTests();
+  const model = "codex/gpt-6-astra";
+  const alternate = "openai/other-model";
+  const body = {
+    stream: false,
+    input: [{ role: "user", content: "hello" }],
+    client_metadata: {
+      "x-codex-turn-metadata": JSON.stringify({ thread_id: "availability", turn_id: "plain" }),
+    },
+  };
+  const combo = {
+    name: "account-availability-plain",
+    strategy: "priority" as const,
+    models: [model, alternate],
+    config: { maxRetries: 0, maxSetRetries: 0 },
+  };
+  let available = true;
+  const selections: string[] = [];
+  const run = () =>
+    handleComboChat({
+      body,
+      combo,
+      clientManagedResponsesContext: true,
+      settings: { resilienceSettings: { comboCooldownWait: { enabled: false } } },
+      allCombos: null,
+      log: { info() {}, warn() {}, debug() {} },
+      isModelAvailable: async (selected) => selected !== model || available,
+      handleSingleModel: async (_body, selected) => {
+        selections.push(selected);
+        return new Response("{}", {
+          headers: { "x-omniroute-selected-connection-id": "account" },
+        });
+      },
+    });
+  assert.equal((await run()).status, 200);
+  available = false;
+  // An account block of unknown length must not strand a resumable plain turn on 503.
+  assert.equal((await run()).status, 200);
+  assert.deepEqual(selections, [model, alternate]);
+});
 
 test("persisted account cooldown plus exhausted sibling quota recovers without a new turn", async () => {
   clearAllModelLockouts();

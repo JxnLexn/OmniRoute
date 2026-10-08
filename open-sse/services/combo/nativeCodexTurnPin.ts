@@ -539,6 +539,39 @@ export async function areAllPinnedTargetsModelScopedUnusable(
   return true;
 }
 
+/**
+ * Pinned-turn unusability with the account-availability carve-out (#15486).
+ *
+ * Model-scoped evidence (a non-waitable model lock) always makes the pin unusable.
+ * Account-level unavailability alone — quota policy, a persisted account cooldown, a
+ * boolean `isModelAvailable` miss — keeps the pin so a turn carrying opaque state or a
+ * pending tool call gets a retryable 429/503 instead of being terminated or handed to
+ * another model. A plain turn that can safely auto-resume on a healthy alternate still
+ * does (#13180/#13564): an account block has no known end, so it is not waited out.
+ * `decision` is the eligible auto-resume decision when the carve-out decided it.
+ */
+export async function resolvePinnedTurnUnusable(
+  options: CheckPinnedTargetsModelScopedUnusableOptions,
+  evaluateAutoResume: () => Promise<AutoResumeDecision>
+): Promise<{ unusable: boolean; decision: AutoResumeDecision | null }> {
+  if (await areAllPinnedTargetsModelScopedUnusable(options)) {
+    return { unusable: true, decision: null };
+  }
+  if (!options.pinnedTargets?.length) return { unusable: false, decision: null };
+  for (const target of options.pinnedTargets) {
+    const accountOrModelUnusable = await isPinnedTargetModelScopedUnusable({
+      target,
+      ...options,
+      allowWaitableLock: true,
+    });
+    if (!accountOrModelUnusable) return { unusable: false, decision: null };
+  }
+  const decision = await evaluateAutoResume();
+  return decision.eligible === true
+    ? { unusable: true, decision }
+    : { unusable: false, decision: null };
+}
+
 export function releaseNativeCodexTurnPin(body: Record<string, unknown>, comboName: string): void {
   const key = nativeCodexTurnKey(body, comboName);
   if (key) turns.delete(key);
