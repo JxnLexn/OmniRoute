@@ -7,6 +7,10 @@ export interface SyncedAvailableModel {
   id: string;
   name: string;
   source: "imported";
+  /** Upstream picker visibility; does not restrict explicit inference requests. */
+  visibility?: "hide" | "list";
+  supportedInApi?: boolean;
+  minimalClientVersion?: string;
   apiFormat?: string;
   targetFormat?: string;
   upstreamProtocol?: string;
@@ -61,6 +65,15 @@ function normalizeSyncedAvailableModel(model: unknown): SyncedAvailableModel | n
     id,
     name,
     source: "imported",
+    ...(record.visibility === "hide" || record.visibility === "list"
+      ? { visibility: record.visibility }
+      : {}),
+    ...(typeof record.supportedInApi === "boolean"
+      ? { supportedInApi: record.supportedInApi }
+      : {}),
+    ...(toNonEmptyString(record.minimalClientVersion)
+      ? { minimalClientVersion: toNonEmptyString(record.minimalClientVersion)! }
+      : {}),
     ...(toNonEmptyString(record.apiFormat)
       ? { apiFormat: toNonEmptyString(record.apiFormat)! }
       : {}),

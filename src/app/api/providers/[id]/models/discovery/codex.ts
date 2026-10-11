@@ -170,7 +170,7 @@ function buildCodexDiscoveryModel(
   if (!id) return null;
 
   const metadata = getCodexModelMetadata(record);
-  if (metadata.visibility === "hide" || metadata.supportedInApi === false) return null;
+  if (metadata.supportedInApi === false) return null;
 
   const topProvider = asRecord(record.top_provider);
   const limits = asRecord(record.limits);
