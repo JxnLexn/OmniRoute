@@ -4,6 +4,7 @@ import { Button, DistributeProxiesButton, Toggle } from "@/shared/components";
 import ChatGptSignInButton from "@/shared/components/ChatGptSignInButton";
 import { providerText, type ProviderMessageTranslator } from "../providerPageHelpers";
 import type { CodexGlobalServiceMode } from "@/lib/providers/codexFastTier";
+import AccountProxyResetButton from "./AccountProxyResetButton";
 
 type ConnectionsHeaderToolbarProps = {
   providerId: string;
@@ -17,6 +18,7 @@ type ConnectionsHeaderToolbarProps = {
   batchTesting: boolean;
   batchRetesting: boolean;
   retestingId: string | null;
+  distributingProxies?: boolean;
   proxyConfig: any;
   reorderingByAvailability: boolean;
   handleReorderByAvailability: () => void | Promise<void>;
@@ -37,6 +39,7 @@ type ConnectionsHeaderToolbarProps = {
   // Modal triggers
   onSetProxyTarget: (target: { level: string; id: string; label: string }) => void;
   handleDistributeProxies: () => void;
+  onAccountProxiesReset: () => Promise<void>;
   handleBatchTestAll: () => void;
   gateConnectionFlow: (callback: () => void) => void;
   openApiKeyAddFlow: () => void;
@@ -67,6 +70,7 @@ export default function ConnectionsHeaderToolbar({
   batchTesting,
   batchRetesting,
   retestingId,
+  distributingProxies = false,
   proxyConfig,
   reorderingByAvailability,
   handleReorderByAvailability,
@@ -85,6 +89,7 @@ export default function ConnectionsHeaderToolbar({
   loadCodexSettings,
   onSetProxyTarget,
   handleDistributeProxies,
+  onAccountProxiesReset,
   handleBatchTestAll,
   gateConnectionFlow,
   openApiKeyAddFlow,
@@ -235,7 +240,14 @@ export default function ConnectionsHeaderToolbar({
             onDistribute={async () => {
               await handleDistributeProxies();
             }}
-            disabled={batchTesting || !!retestingId}
+            disabled={batchTesting || batchRetesting || distributingProxies || !!retestingId}
+          />
+        )}
+        {connections.length > 0 && (
+          <AccountProxyResetButton
+            connectionIds={connections.map((connection) => connection.id)}
+            disabled={batchTesting || batchRetesting || distributingProxies || !!retestingId}
+            onReset={onAccountProxiesReset}
           />
         )}
         {connections.length > 1 && (
