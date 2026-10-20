@@ -9,6 +9,7 @@
 import { EXECUTOR_CONTRACT_VIOLATION_CODE } from "../../config/constants.ts";
 import { finitePercentUsed, remainingPercentFromQuotaWindows } from "../antigravityQuotaFamily.ts";
 import { errorResponse } from "../../utils/error.ts";
+import { isContentPolicyRefusal } from "../../utils/contentPolicyError.ts";
 import { parseModel } from "../model.ts";
 import { isSelfInflictedUpstreamTimeout } from "../../handlers/chatCore/cooldownClassification.ts";
 import {
@@ -29,6 +30,7 @@ import { isResourceNotFoundResponse } from "../errorClassifier.ts";
 import { isOpencodeFreeTierRefusal } from "../../executors/opencodeGeoBlock.ts";
 import { getTrustedLocalRateLimitResponse } from "../rateLimitManager/errors.ts";
 import { TRANSLATION_FAILURE_CODE } from "../../handlers/chatCore/translationFailure.ts";
+import { isLocalModelPolicyResponse } from "../resolvedModelAccess.ts";
 import type { ResolvedComboTarget } from "./types.ts";
 import {
   classifyComboOutcome,
@@ -197,10 +199,11 @@ export function shouldSkipForPredictedTtft(
 
 /**
  * Whole-provider circuit-breaker failure statuses for the combo path. Kept byte-identical
- * to the single-model path's `PROVIDER_BREAKER_FAILURE_STATUSES` (src/sse/handlers/chat.ts:206)
- * — the source of truth. 429 is deliberately EXCLUDED: a plain rate-limit must not open the
- * whole-provider breaker (it's connection-cooldown / model-lockout scope). Defined locally
- * rather than imported to avoid a cross-layer (open-sse → src/sse) import cycle.
+ * to the single-model path's `PROVIDER_BREAKER_FAILURE_STATUSES`
+ * (src/sse/handlers/chatPredicates.ts) — the source of truth. 429 is deliberately
+ * EXCLUDED: a plain rate-limit must not open the whole-provider breaker (it's
+ * connection-cooldown / model-lockout scope). Defined locally rather than imported to
+ * avoid a cross-layer (open-sse → src/sse) import cycle.
  */
 const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 504]);
 
@@ -217,10 +220,9 @@ const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 504]);
  * - Only whole-provider failure statuses (408/500/502/503/504) count. A plain rate-limit
  *   429 is deliberately EXCLUDED — it belongs to connection cooldown / model lockout scope
  *   (a genuine quota/token-limit 429 is handled there), NOT the whole-provider breaker. This
- *   mirrors the single-model path's `PROVIDER_BREAKER_FAILURE_STATUSES` (src/sse/handlers/
- *   chat.ts:206) — the source of truth — and the documented RESILIENCE_GUIDE policy. NOTE:
- *   this intentionally differs from `isProviderFailureCode` (accountFallback.ts), which
- *   INCLUDES 429 for connection-cooldown purposes and must not be changed here.
+ *   mirrors the single-model path's `PROVIDER_BREAKER_FAILURE_STATUSES`
+ *   (src/sse/handlers/chatPredicates.ts) — the source of truth — and the documented
+ *   RESILIENCE_GUIDE policy.
  * - When the next combo target is on the SAME provider, don't trip the provider breaker:
  *   a different model on that provider may still succeed. #8376: EXCEPT when the failure
  *   itself is a transport-level "proxy unreachable" event (`isProxyUnreachable`) — a dead
@@ -321,6 +323,7 @@ export function isRequestScopedUpstreamFailure(error?: {
   const type = typeof error?.type === "string" ? error.type.toLowerCase() : "";
   return (
     REQUEST_SCOPED_UPSTREAM_ERROR_CODES[code] === true ||
+    isContentPolicyRefusal(error) ||
     type === "invalid_request_error" ||
     type === "context_length_exceeded" ||
     type === "local_queue_capacity" ||
@@ -361,6 +364,7 @@ export function isComboRequestScopedFailure(
   error?: { code?: string | null; type?: string | null }
 ): boolean {
   return (
+    isLocalModelPolicyResponse(response) ||
     getTrustedLocalRateLimitResponse(response) !== null ||
     isRequestScopedUpstreamFailure(error) ||
     (response.status === 404 && isResourceNotFoundResponse(errorText)) ||

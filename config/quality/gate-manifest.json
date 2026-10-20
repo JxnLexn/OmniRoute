@@ -89,6 +89,16 @@
       "disposition": "separately-invoked"
     },
     {
+      "name": "check:boundary",
+      "command": "node scripts/quality/measure-boundary.mjs",
+      "disposition": "separately-invoked"
+    },
+    {
+      "name": "check:boundary:ratchet",
+      "command": "node scripts/quality/measure-boundary.mjs --ratchet",
+      "disposition": "separately-invoked"
+    },
+    {
       "name": "check:cycles",
       "command": "node scripts/check/check-cycles.mjs",
       "disposition": "separately-invoked"
@@ -444,6 +454,11 @@
       "disposition": "separately-invoked"
     },
     {
+      "name": "quality:boundary",
+      "command": "node scripts/quality/measure-boundary.mjs",
+      "disposition": "separately-invoked"
+    },
+    {
       "name": "quality:collect",
       "command": "node scripts/quality/collect-metrics.mjs",
       "disposition": "separately-invoked"
@@ -614,6 +629,11 @@
       "disposition": "separately-invoked"
     },
     {
+      "name": "test:services:int",
+      "command": "cross-env RUN_SERVICES_INT=1 DISABLE_SQLITE_AUTO_BACKUP=true node --import tsx/esm --import ./open-sse/utils/setupPolyfill.ts --import ./tests/_setup/isolateDataDir.ts --test --test-force-exit --test-concurrency=1 \"tests/integration/services/*.test.ts\"",
+      "disposition": "separately-invoked"
+    },
+    {
       "name": "test:system",
       "command": "cross-env DISABLE_SQLITE_AUTO_BACKUP=true node --import tsx/esm --import ./open-sse/utils/setupPolyfill.ts --import ./tests/_setup/isolateDataDir.ts --test --test-force-exit --test-concurrency=1 tests/e2e/system-failover.test.ts",
       "disposition": "separately-invoked"
@@ -677,6 +697,11 @@
       "name": "typecheck:noimplicit:core",
       "command": "tsc --pretty false -p tsconfig.typecheck-noimplicit-core.json",
       "disposition": "separately-invoked"
+    },
+    {
+      "name": "check:free-catalog-evidence",
+      "command": "node scripts/check/check-free-catalog-evidence.mjs",
+      "disposition": "separately-invoked"
     }
   ],
   "profiles": {
@@ -705,7 +730,8 @@
         "check:test-discovery",
         "check:test-masking",
         "check:duplication",
-        "check:cycles"
+        "check:cycles:ratchet",
+        "check:boundary:ratchet"
       ]
     },
     "quality-scan-fast": {

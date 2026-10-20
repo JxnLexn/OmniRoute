@@ -23,6 +23,7 @@ import {
 import QuotaCardHeader from "./parts/QuotaCardHeader";
 import QuotaCardExpanded from "./parts/QuotaCardExpanded";
 import ProviderUsdCostModal from "./ProviderUsdCostModal";
+import type { CodexPaidCredits } from "@/lib/providers/codexPaidCredits";
 
 const STATUS_BORDER: Record<CardStatus, string> = {
   critical: "#ef4444",
@@ -41,7 +42,12 @@ interface QuotaCardProps {
         plan?: string | null;
         message?: string | null;
         billing?: ProviderBillingStatus | null;
-        raw?: { billing?: ProviderBillingStatus | null };
+        raw?: {
+          billing?: ProviderBillingStatus | null;
+          quotaGroups?: Array<Record<string, unknown>>;
+          paidCredits?: CodexPaidCredits;
+          speed?: unknown;
+        };
         stale?: { since?: string; reason?: string } | null;
       }
     | undefined;
@@ -85,13 +91,18 @@ export default function QuotaCard({
   const isActive = connection.isActive ?? true;
   const [costModalOpen, setCostModalOpen] = useState(false);
   const rawQuotas = quota?.quotas ?? EMPTY_QUOTAS;
+  // Per-account visibility (9router#4767); provider entry is a legacy fallback.
+  const visibilityScope = useMemo(
+    () => ({ connectionId: connection.id, provider: connection.provider }),
+    [connection.id, connection.provider]
+  );
   const quotas = useMemo(
-    () => filterQuotasByVisibility(connection.provider, rawQuotas, quotaVisibility),
-    [connection.provider, rawQuotas, quotaVisibility]
+    () => filterQuotasByVisibility(visibilityScope, rawQuotas, quotaVisibility),
+    [visibilityScope, rawQuotas, quotaVisibility]
   );
   const hiddenQuotaRows = useMemo(
-    () => getHiddenQuotaRows(connection.provider, rawQuotas, quotaVisibility),
-    [connection.provider, rawQuotas, quotaVisibility]
+    () => getHiddenQuotaRows(visibilityScope, rawQuotas, quotaVisibility),
+    [visibilityScope, rawQuotas, quotaVisibility]
   );
   const cardStatus = useMemo<CardStatus>(() => worstStatus(quotas), [quotas]);
   const tierMeta = useMemo(
@@ -101,7 +112,8 @@ export default function QuotaCard({
           quota?.plan ?? null,
           connection.providerSpecificData ?? null,
           connection.provider
-        )
+        ),
+        connection.provider
       ),
     [quota?.plan, connection.providerSpecificData, connection.provider]
   );
@@ -148,6 +160,7 @@ export default function QuotaCard({
         hasStaleData={hasStaleData}
         onToggleActive={onToggleActive}
         togglingActive={togglingActive}
+        onTestSent={onRefresh}
       />
       {connection.provider === "chatgpt" && (
         <ChatGptLocalUsage
@@ -158,6 +171,9 @@ export default function QuotaCard({
       {connection.provider !== "chatgpt" && (
         <QuotaCardExpanded
           quotas={quotas}
+          quotaGroups={quota?.raw?.quotaGroups}
+          paidCredits={connection.provider === "codex" ? quota?.raw?.paidCredits : undefined}
+          speed={quota?.raw?.speed}
           providerId={connection.provider}
           loading={loading}
           error={error}

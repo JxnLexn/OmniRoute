@@ -14,9 +14,10 @@
  */
 
 import React, { useState } from "react";
+import { settleBoundedSyncRequests } from "@/lib/providerModels/immediateSyncBatch";
 import { extractApiErrorMessage } from "@/shared/http/apiErrorMessage";
 import { providerText, type ProviderMessageTranslator } from "../providerPageHelpers";
-import { classifyModelImport } from "./modelImportWarning";
+import { classifyModelImport, resolveNoNewModelsPhase } from "./modelImportWarning";
 
 interface NotifyStore {
   success: (message: string, title?: string) => number;
@@ -30,7 +31,7 @@ interface NotifyStore {
 export interface ImportProgress {
   current: number;
   total: number;
-  phase: "idle" | "fetching" | "importing" | "done" | "error";
+  phase: "idle" | "fetching" | "importing" | "done" | "warning" | "error";
   status: string;
   logs: string[];
   error: string;
@@ -72,6 +73,18 @@ export interface UseModelImportHandlersReturn {
   handleCompatibleImportWithProgress: (connectionId: string) => Promise<void>;
   handleToggleAutoSync: () => Promise<void>;
   handleToggleAutoFetchModels: () => Promise<void>;
+}
+
+/** Only successfully enabled connections need an immediate upstream discovery. */
+function newlyEnabledAutoSyncIds(
+  connections: UseModelImportHandlersParams["connections"],
+  results: PromiseSettledResult<Response>[]
+): string[] {
+  return connections.flatMap((connection, index) => {
+    const result = results[index];
+    if (connection.providerSpecificData?.autoSync === true || !connection.id) return [];
+    return result?.status === "fulfilled" && result.value.ok ? [connection.id] : [];
+  });
 }
 
 // ──── hook ───────────────────────────────────────────────────────────────────
@@ -186,9 +199,14 @@ export function useModelImportHandlers({
       const newModels = classification.newModels;
 
       if (classification.outcome === "nothing-new") {
+        // #15069: a degraded (local-catalog fallback) result is a terminal "warning", not a
+        // success — the live provider API was never actually consulted.
+        const noNewModelsPhase = resolveNoNewModelsPhase(
+          classification.degraded ? importWarning : null
+        );
         setImportProgress((prev) => ({
           ...prev,
-          phase: "done",
+          phase: noNewModelsPhase,
           status:
             classification.degraded && importWarning
               ? importWarning
@@ -229,7 +247,9 @@ export function useModelImportHandlers({
       const failures: string[] = [];
       for (let i = 0; i < newModels.length; i++) {
         const model = newModels[i];
-        const modelId = model.id || model.name || model.model;
+        const rawId = model.id || model.name || model.model;
+        // Same coercion classifyModelImport uses for the "already imported" check.
+        const modelId = typeof rawId === "string" ? rawId : String(rawId ?? "");
         if (!modelId) continue;
         const parts = modelId.split("/");
         const baseAlias = parts[parts.length - 1];
@@ -252,6 +272,9 @@ export function useModelImportHandlers({
             ...(typeof model.apiFormat === "string" ? { apiFormat: model.apiFormat } : {}),
             ...(Array.isArray(model.supportedEndpoints)
               ? { supportedEndpoints: model.supportedEndpoints }
+              : {}),
+            ...(typeof model.endpointCapabilitySource === "string"
+              ? { endpointCapabilitySource: model.endpointCapabilitySource }
               : {}),
             ...(typeof model.dimensions === "number" && model.dimensions > 0
               ? { dimensions: model.dimensions }
@@ -478,16 +501,37 @@ export function useModelImportHandlers({
           })
         )
       );
+      // Only newly enabled connections need an immediate sync; existing
+      // enabled accounts remain on their scheduler cadence.
+      const syncIds = newValue ? newlyEnabledAutoSyncIds(activeWithId, results) : [];
+      // A provider may have many accounts sharing one upstream/IP. Fan out
+      // the setting writes as before, but cap *live* discovery calls at two
+      // to avoid a burst that can trigger shared upstream rate limits.
+      const syncResults = await settleBoundedSyncRequests(syncIds, async (id) => {
+        const response = await fetch(`/api/providers/${id}/sync-models`, {
+          method: "POST",
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      });
       await fetchConnections();
+      if (syncIds.length > 0) await fetchProviderModelMeta();
+      const syncFailed = syncResults.some((r) => r.status === "rejected");
       const fulfilled = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
-      if (fulfilled === results.length) {
+      if (fulfilled === results.length && !syncFailed) {
         notify[newValue ? "success" : "info"](
           newValue ? t("autoSyncEnabled") : t("autoSyncDisabled")
         );
       } else if (fulfilled === 0) {
         notify.error(t("autoSyncToggleFailed"));
       } else {
-        notify.warning(t("autoSyncPartialFailure"));
+        notify.warning(
+          t(
+            syncFailed && fulfilled === results.length
+              ? "autoSyncImmediatePartialFailure"
+              : "autoSyncPartialFailure"
+          )
+        );
       }
     } catch (error) {
       console.error("Error toggling auto-sync:", error);

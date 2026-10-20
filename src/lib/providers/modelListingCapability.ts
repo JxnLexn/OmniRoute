@@ -22,6 +22,10 @@ const CURATED_MODEL_ONLY_PROVIDERS = new Set<string>([
   // The clean-room browser integration exposes only model/effort routes
   // observed in the first-party picker. It has no upstream model-list API.
   "chatgpt-web",
+  // CodeBuddy gateways (Tencent CN and intl) publish no model-catalog endpoint;
+  // their registry models are the complete curated lineup.
+  "codebuddy-cn",
+  "codebuddy-intl",
 ]);
 
 export function providerUsesCuratedModelsOnly(providerId: string): boolean {
@@ -38,7 +42,7 @@ export function providerUsesCuratedModelsOnly(providerId: string): boolean {
  */
 export function providerUsesExclusiveSyncedListing(providerId: string): boolean {
   const id = providerId.trim().toLowerCase();
-  return providerIsCursor(id) || id === "chatgpt";
+  return providerIsCursor(id) || id === "codex" || id === "cx" || id === "chatgpt";
 }
 
 /**
