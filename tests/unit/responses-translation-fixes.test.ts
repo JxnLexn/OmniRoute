@@ -831,6 +831,10 @@ test("Responses→Chat streaming: flush finalizes stop when no tool call was emi
 
 test("Chat→Responses streaming: reasoning and a following tool call use distinct output indexes", () => {
   const state = initState(FORMATS.OPENAI_RESPONSES);
+  // A declared tool is ready before the terminal marker; unknown names stay buffered.
+  state.toolSchemas = new Map([
+    ["lookup", { type: "object", properties: { query: { type: "string" } } }],
+  ]);
 
   const reasoningEvents = openaiToOpenAIResponsesResponse(
     {

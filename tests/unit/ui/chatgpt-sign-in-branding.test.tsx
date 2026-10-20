@@ -11,6 +11,7 @@ import ConnectionsHeaderToolbar from "@/app/(dashboard)/dashboard/providers/[id]
 const theme = vi.hoisted(() => ({ isDark: false }));
 vi.mock("@/shared/hooks/useTheme", () => ({ useTheme: () => theme }));
 vi.mock("@/shared/components", () => ({
+  ActionBar: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Button: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => (
     <button onClick={onClick}>{children}</button>
   ),

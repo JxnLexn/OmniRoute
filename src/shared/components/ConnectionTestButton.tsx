@@ -34,15 +34,6 @@ export default function ConnectionTestButton({ connectionId, disabled, compact, 
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const endpoint = `/api/providers/${encodeURIComponent(connectionId)}/test-message`;
-  const activeEndpoint = open ? endpoint : null;
-  const [loadedEndpoint, setLoadedEndpoint] = useState<string | null>(null);
-  if (loadedEndpoint !== activeEndpoint) {
-    setLoadedEndpoint(activeEndpoint);
-    setLoading(open);
-    setError("");
-    setAnswer("");
-    setSaved(false);
-  }
 
   useEffect(() => {
     if (!open) return;
@@ -118,6 +109,12 @@ export default function ConnectionTestButton({ connectionId, disabled, compact, 
         className={compact ? "!px-1" : "!px-2"}
         onClick={(event) => {
           event.stopPropagation();
+          // Reset the per-open state in the handler, not in the loading effect
+          // (react-hooks/set-state-in-effect).
+          setLoading(true);
+          setError("");
+          setAnswer("");
+          setSaved(false);
           setOpen(true);
         }}
       >

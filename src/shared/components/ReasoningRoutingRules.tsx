@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRef } from "react";
+import CodexServiceModeSettings from "./CodexServiceModeSettings";
 import Button from "./Button";
 import Card from "./Card";
 import Input from "./Input";
 import Select from "./Select";
 import Toggle from "./Toggle";
 import { ConfirmModal } from "./Modal";
-import CodexServiceModeSettings from "./CodexServiceModeSettings";
 import RoutingChoice from "./routing/RoutingChoice";
 import { readCatalogModels } from "./ModelSelectField";
 import {
@@ -488,6 +488,11 @@ export default function ReasoningRoutingRules({
           />
         </div>
         {apiKeyId && <p className="mt-3 text-sm text-text-muted">{e("keyScopeNotice")}</p>}
+        {apiKeyId && (
+          <div className="mt-4">
+            <CodexServiceModeSettings key={apiKeyId} apiKeyId={apiKeyId} />
+          </div>
+        )}
         {loading && (
           <p className="mt-4 text-sm text-text-muted" role="status">
             {e("loading")}
@@ -510,9 +515,6 @@ export default function ReasoningRoutingRules({
         )}
       </Card>
 
-      {apiKeyId && !keyMissing && !loading && !loadFailed && (
-        <CodexServiceModeSettings key={apiKeyId} apiKeyId={apiKeyId} />
-      )}
       <Card title={e("ruleList")} subtitle={e("ruleCount", { count: scopedRules.length })}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input

@@ -312,7 +312,9 @@ export default function ProviderModalsPanel({
           }}
         />
       )}
-      {!isUpstreamProxyProvider && (
+      {/* Mount only while open: closing drops the whole form, so a reopened
+          modal never shows the previous credentials. */}
+      {!isUpstreamProxyProvider && showAddApiKeyModal && (
         <AddApiKeyModal
           isOpen={showAddApiKeyModal}
           provider={providerId}
@@ -460,7 +462,11 @@ export default function ProviderModalsPanel({
         importProgress={importProgress}
         isOpen={showImportModal}
         onClose={() => {
-          if (importProgress.phase === "done" || importProgress.phase === "error") {
+          if (
+            importProgress.phase === "done" ||
+            importProgress.phase === "error" ||
+            importProgress.phase === "warning"
+          ) {
             setShowImportModal(false);
           }
         }}

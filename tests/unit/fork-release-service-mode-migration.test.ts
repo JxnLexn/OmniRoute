@@ -12,13 +12,17 @@ fs.writeFileSync(
   "ALTER TABLE provider_connections ADD COLUMN synced_models_at TEXT;"
 );
 fs.writeFileSync(
-  path.join(dir, "197_api_key_codex_service_mode.sql"),
+  path.join(dir, "205_api_key_codex_service_mode.sql"),
   "ALTER TABLE api_keys ADD COLUMN codex_service_mode TEXT NOT NULL DEFAULT 'inherit';"
+);
+fs.writeFileSync(
+  path.join(dir, "197_proxy_subscription_core_config.sql"),
+  "CREATE TABLE proxy_subscription_core_config (id TEXT PRIMARY KEY);"
 );
 const { runMigrations } = await import("../../src/lib/db/migrationRunner.ts");
 test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-for (const legacy of [true, false]) {
+for (const legacy of ["177", "197", null]) {
   test(`service mode survives release upgrade (legacy fork: ${legacy})`, () => {
     const db = new Database(":memory:");
     try {
@@ -32,7 +36,7 @@ for (const legacy of [true, false]) {
       if (legacy) {
         db.exec("INSERT INTO api_keys VALUES ('key', 'priority');");
         db.exec(
-          "INSERT INTO _omniroute_migrations(version,name) VALUES ('177','api_key_codex_service_mode');"
+          `INSERT INTO _omniroute_migrations(version,name) VALUES ('${legacy}','api_key_codex_service_mode');`
         );
       } else db.exec("INSERT INTO api_keys(id) VALUES ('key');");
       runMigrations(db);
@@ -48,7 +52,8 @@ for (const legacy of [true, false]) {
         db.prepare("SELECT version,name FROM _omniroute_migrations ORDER BY version").all(),
         [
           { version: "177", name: "provider_connection_synced_models_at" },
-          { version: "197", name: "api_key_codex_service_mode" },
+          { version: "197", name: "proxy_subscription_core_config" },
+          { version: "205", name: "api_key_codex_service_mode" },
         ]
       );
       assert.equal(runMigrations(db), 0);

@@ -1,4 +1,8 @@
 import { promoteResponsesAdditionalTools } from "../translator/request/openai-responses/additionalTools.ts";
+import {
+  restoreReadableCompactionItem,
+  isEmptyContextCompactionMarker,
+} from "./readableCompaction.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -93,6 +97,8 @@ function normalizeCodexResponsesInputItem(itemValue: unknown): unknown {
   if (!itemValue || typeof itemValue !== "object" || Array.isArray(itemValue)) return itemValue;
 
   const item = { ...(itemValue as JsonRecord) };
+  const restored = restoreReadableCompactionItem(item);
+  if (restored) return restored;
   const role = typeof item.role === "string" ? item.role : "user";
   const type = typeof item.type === "string" ? item.type : "";
 
@@ -121,15 +127,11 @@ function normalizeCodexResponsesInputItem(itemValue: unknown): unknown {
 
 export function normalizeCodexResponsesInput(body: JsonRecord): void {
   promoteResponsesAdditionalTools(body);
-  if (Array.isArray(body.input)) {
-    body.input = body.input.map(normalizeCodexResponsesInputItem);
-    return;
-  }
-
-  // undefined → leave as-is; null → empty list (not [null], which would surface a bogus
-  // item downstream); anything else → wrap the single item.
   if (body.input === undefined) return;
-  body.input = body.input === null ? [] : [normalizeCodexResponsesInputItem(body.input)];
+  const items = body.input === null ? [] : Array.isArray(body.input) ? body.input : [body.input];
+  body.input = items
+    .filter((item) => !isEmptyContextCompactionMarker(item))
+    .map(normalizeCodexResponsesInputItem);
 }
 
 function normalizeResponsesInputItemForChat(value: unknown): unknown {
@@ -140,6 +142,9 @@ function normalizeResponsesInputItemForChat(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
 
   const item = { ...(value as JsonRecord) };
+  const restored = restoreReadableCompactionItem(item);
+  if (restored) return restored;
+  if (isEmptyContextCompactionMarker(item)) return { type: "reasoning" };
   const hasType = typeof item.type === "string" && item.type.length > 0;
   const hasRole = typeof item.role === "string" && item.role.length > 0;
 

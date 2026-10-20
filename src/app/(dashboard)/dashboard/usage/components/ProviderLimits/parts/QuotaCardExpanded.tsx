@@ -27,6 +27,9 @@ import {
   sortQuotasByWindow,
 } from "../quotaParsing";
 import KiloPassMeter from "./KiloPassMeter";
+import QuotaCardSpeed from "./QuotaCardSpeed";
+import { hasCodexPaidCredits, type CodexPaidCredits } from "@/lib/providers/codexPaidCredits";
+import AntigravityQuotaGroups, { resolveAntigravityQuotaGroups } from "../AntigravityQuotaGroups";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -136,11 +139,13 @@ export function shouldShowLoadingPlaceholder(
 
 interface Props {
   quotas: any[];
+  quotaGroups?: Array<Record<string, unknown>>;
   providerId?: string;
   loading: boolean;
   error: string | null;
   message?: string | null;
   billing?: ProviderBillingStatus | null;
+  paidCredits?: CodexPaidCredits;
   refreshedAt?: string;
   hasStaleData: boolean;
   onRefresh: () => void;
@@ -156,6 +161,8 @@ interface Props {
   hiddenQuotaRows?: any[];
   onHideQuota?: (quota: any) => void;
   onShowQuota?: (quota: any) => void;
+  /** Read-time decode-speed stats from the usage API (`speed` payload). */
+  speed?: unknown;
 }
 
 function QuotaDetailRow({
@@ -321,11 +328,13 @@ function QuotaDetailRow({
 
 export default function QuotaCardExpanded({
   quotas,
+  quotaGroups = [],
   providerId,
   loading,
   error,
   message,
   billing,
+  paidCredits,
   refreshedAt,
   hasStaleData,
   onRefresh,
@@ -340,12 +349,20 @@ export default function QuotaCardExpanded({
   hiddenQuotaRows = [],
   onHideQuota,
   onShowQuota,
+  speed,
 }: Props) {
   const t = useTranslations("usage");
   const tr = (key: string, fallback: string, values?: UsageTranslationValues) =>
     translateUsageOrFallback(t, key, fallback, values);
 
   const [expanded, setExpanded] = useState(false);
+  const resolvedAntigravityGroups = useMemo(
+    () =>
+      providerId === "antigravity" || providerId === "agy"
+        ? resolveAntigravityQuotaGroups(quotaGroups, quotas)
+        : [],
+    [providerId, quotaGroups, quotas]
+  );
   const sortedQuotas = useMemo(
     () => resolveQuotaDisplayOrder(providerId, quotas),
     [quotas, providerId]
@@ -383,6 +400,9 @@ export default function QuotaCardExpanded({
           <span className="material-symbols-outlined text-[13px]">error</span>
           <span>{error}</span>
         </div>
+      ) : (providerId === "antigravity" || providerId === "agy") &&
+        resolvedAntigravityGroups.length > 0 ? (
+        <AntigravityQuotaGroups groups={resolvedAntigravityGroups} />
       ) : quotas.length === 0 && message ? (
         <div className="text-[11px] text-text-muted italic" title={message}>
           {message}
@@ -407,6 +427,22 @@ export default function QuotaCardExpanded({
       {isProviderBillingProvider(providerId) && billing && (
         <ProviderBillingDetails billing={billing} />
       )}
+      {providerId === "codex" && paidCredits && (
+        <div className="flex justify-between gap-2 border-t border-border/40 pt-2 text-[11px] text-text-main">
+          <span>{t("codexPaidCreditsLabel")}</span>
+          <span className="font-semibold">
+            {paidCredits.overageLimitReached || !hasCodexPaidCredits(paidCredits)
+              ? t("codexPaidCreditsUnavailable")
+              : paidCredits.unlimited
+                ? t("codexPaidCreditsUnlimited")
+                : paidCredits.balance === null
+                  ? t("codexPaidCreditsAvailable")
+                  : paidCredits.balance.toLocaleString()}
+          </span>
+        </div>
+      )}
+
+      {!error && <QuotaCardSpeed speed={speed} />}
 
       {hiddenQuotaRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 border-t border-border/40 pt-1.5 text-[10px] text-text-muted">

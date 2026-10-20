@@ -34,6 +34,7 @@ import {
   type PreMigrationBackupReceipt,
 } from "./migrationRunner/preMigrationBackup";
 import {
+  applyMigrationSkippingExistingColumns,
   detectNameMismatches,
   getPlausiblePendingCount,
   hasColumn,
@@ -622,10 +623,15 @@ function isSchemaAlreadyApplied(
       // Same shape as 179/181/183/184/187: ensureProxyLogsColumns may have
       // added headers_ms at boot. Keyed by version only.
       return hasColumn(db, "proxy_logs", "headers_ms");
-    case "197":
+    case "205":
       return (
         migration.name === "api_key_codex_service_mode" &&
         hasColumn(db, "api_keys", "codex_service_mode")
+      );
+    case "212":
+      return (
+        hasColumn(db, "usage_history", "provider_credits") &&
+        hasColumn(db, "usage_history", "provider_cost_usd")
       );
     default:
       return false;
@@ -644,6 +650,31 @@ function applyApiKeyLifecycleMigration(db: SqliteAdapter): void {
     CREATE INDEX IF NOT EXISTS idx_api_keys_revoked_at ON api_keys(revoked_at);
     CREATE INDEX IF NOT EXISTS idx_api_keys_expires_at ON api_keys(expires_at);
   `);
+}
+
+// 207_remove_opencode_free_provider reads every credential column of provider_connections to
+// tell keyed OpenCode rows (moved to opencode-zen) from keyless ones (dropped). Those columns
+// come from the core.ts table definition, not from a numbered migration, so a database whose
+// provider_connections predates them aborted the whole migration run with "no such column".
+// Add the missing nullable TEXT columns first; an existing column is left untouched.
+const OPENCODE_FREE_REMOVAL_CREDENTIAL_COLUMNS = [
+  "api_key",
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "provider_specific_data",
+] as const;
+
+function ensureOpencodeFreeRemovalColumns(db: SqliteAdapter): void {
+  if (!hasTable(db, "provider_connections")) return;
+  for (const column of OPENCODE_FREE_REMOVAL_CREDENTIAL_COLUMNS) {
+    ensureColumn(
+      db,
+      "provider_connections",
+      column,
+      `ALTER TABLE provider_connections ADD COLUMN ${column} TEXT`
+    );
+  }
 }
 
 function isSearchRequestTypeMigration(migration: { version: string; name: string }): boolean {
@@ -1082,6 +1113,7 @@ export function runMigrations(
   for (const migration of pending) {
     if (isDeferredUnsupportedMigration(db, migration)) continue;
 
+    let genericSql: string | null = null;
     const applyMigration = db.transaction(() => {
       if (atomicPhysicalReplays.has(migration.version)) {
         const removed = db
@@ -1106,7 +1138,11 @@ export function runMigrations(
       } else if (migration.version === "042") {
         applyCompressionCombosMigration(db, migration.path);
       } else {
+        if (migration.name === "remove_opencode_free_provider") {
+          ensureOpencodeFreeRemovalColumns(db);
+        }
         const sql = fs.readFileSync(migration.path, "utf-8");
+        genericSql = sql;
         db.exec(sql);
       }
       db.prepare("INSERT INTO _omniroute_migrations (version, name) VALUES (?, ?)").run(
@@ -1125,15 +1161,11 @@ export function runMigrations(
         message.includes("duplicate column name") &&
         !atomicPhysicalReplays.has(migration.version)
       ) {
-        const applyMarkerOnly = db.transaction(() => {
-          db.prepare(
-            "INSERT OR IGNORE INTO _omniroute_migrations (version, name) VALUES (?, ?)"
-          ).run(migration.version, migration.name);
-        });
-        applyMarkerOnly();
+        const skipped = applyMigrationSkippingExistingColumns(db, migration, genericSql);
         count += 1;
         console.log(
-          `[Migration] Applied (column pre-exists): ${migration.version}_${migration.name}`
+          `[Migration] Applied (column pre-exists): ${migration.version}_${migration.name}` +
+            (skipped.length > 0 ? ` (skipped existing: ${skipped.join(", ")})` : "")
         );
       } else {
         console.error(`[Migration] FAILED: ${migration.version}_${migration.name} — ${message}`);
