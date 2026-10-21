@@ -16,6 +16,28 @@ const proxyHealthV1Route = await import("../../src/app/api/v1/management/proxies
 const proxyBulkAssignV1Route =
   await import("../../src/app/api/v1/management/proxies/bulk-assign/route.ts");
 const proxyLogger = await import("../../src/lib/proxyLogger.ts");
+const settingsAssignmentsRoute =
+  await import("../../src/app/api/settings/proxies/assignments/route.ts");
+
+test("both assignment write endpoints validate bodies before changing state", async () => {
+  for (const handler of [settingsAssignmentsRoute.PUT, proxyAssignmentsV1Route.PUT]) {
+    await resetStorage();
+    const invalid = await handler(
+      new Request("http://localhost/api/settings/proxies/assignments", {
+        method: "PUT",
+        body: JSON.stringify({ scope: "invalid" }),
+      })
+    );
+    assert.equal(invalid.status, 400);
+    const malformed = await handler(
+      new Request("http://localhost/api/settings/proxies/assignments", {
+        method: "PUT",
+        body: "{bad",
+      })
+    );
+    assert.equal(malformed.status, 400);
+  }
+});
 
 async function withEnv(name, value, fn) {
   const previous = process.env[name];
