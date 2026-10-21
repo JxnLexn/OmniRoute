@@ -827,3 +827,41 @@ test("both assignment write endpoints validate bodies before changing state", as
     assert.equal(malformed.status, 400);
   }
 });
+
+test("each assignment write endpoint reports its own failure message", async () => {
+  const cases = [
+    [
+      settingsAssignmentsRoute.PUT,
+      "http://localhost/api/settings/proxies/assignments",
+      "Failed to update assignment",
+    ],
+    [
+      proxyAssignmentsV1Route.PUT,
+      "http://localhost/api/v1/management/proxies/assignments",
+      "Failed to update proxy assignment",
+    ],
+  ] as const;
+  for (const [handler, url, expectedMessage] of cases) {
+    await resetStorage();
+    const db = core.getDbInstance();
+    const originalPrepare = db.prepare.bind(db);
+    // A thrown value without a message falls back to the per-route failure message.
+    db.prepare = (sql, ...args) => {
+      if (String(sql).includes("DELETE FROM proxy_assignments")) throw {};
+      return originalPrepare(sql, ...args);
+    };
+    try {
+      const response = await handler(
+        new Request(url, {
+          method: "PUT",
+          body: JSON.stringify({ scope: "global", proxyId: null }),
+        })
+      );
+      assert.equal(response.status, 500);
+      const payload = (await response.json()) as { error: { message: string } };
+      assert.equal(payload.error.message, expectedMessage);
+    } finally {
+      db.prepare = originalPrepare;
+    }
+  }
+});
