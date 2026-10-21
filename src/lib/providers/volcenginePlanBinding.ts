@@ -43,7 +43,6 @@ const PLAN_CONFIG = {
 type PlanKind = keyof typeof PLAN_CONFIG;
 
 export type { ConsoleApiResult } from "./volcengineConsoleResponse";
-export { record, stringField } from "./volcengineConsoleResponse";
 
 function buildCookieHeader(credentials: JsonRecord): string {
   const rawCookie = stringField(credentials.volcConsoleCookie);
