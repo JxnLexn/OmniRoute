@@ -20,7 +20,7 @@ function appendToolCallDelta(
   completed: PendingToolCall[]
 ): void {
   const idx = tc.index;
-  const toolCallId = tc.id != null ? String(tc.id) : tc.id;
+  const toolCallId = tc.id != null ? String(tc.id) : undefined;
   // T37: Prevent merging tool_calls on same index if ID changes.
   if (pending[idx] && toolCallId && pending[idx].id !== toolCallId) {
     completed.push(pending[idx]);
