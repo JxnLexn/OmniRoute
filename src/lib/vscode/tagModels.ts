@@ -78,6 +78,36 @@ function getOllamaModelFamily(model: OpenAiCatalogModel, canonicalFamily?: strin
     : "omniroute";
 }
 
+function buildReasoningFields(model: OpenAiCatalogModel) {
+  const reasoningEffortValues = getReasoningEffortValues(model as VscodeCatalogModel);
+  if (!reasoningEffortValues) return undefined;
+
+  const selectedReasoningEffort =
+    inferSelectedReasoningEffort(model as VscodeCatalogModel, reasoningEffortValues) || "none";
+  const defaultReasoningEffort = getDefaultReasoningEffort(
+    model as VscodeCatalogModel,
+    reasoningEffortValues
+  );
+  const supportedReasoningEfforts =
+    reasoningEffortValues.length > 0
+      ? buildSupportedReasoningEfforts(reasoningEffortValues)
+      : undefined;
+  const configSchema = defaultReasoningEffort
+    ? buildReasoningConfigSchema(reasoningEffortValues, defaultReasoningEffort)
+    : undefined;
+
+  return {
+    supports_reasoning_effort: reasoningEffortValues,
+    supportsReasoningEffort: reasoningEffortValues,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
+    selected_reasoning_effort: selectedReasoningEffort,
+    selectedReasoningEffort: selectedReasoningEffort,
+    ...(configSchema ? { configurationSchema: configSchema } : {}),
+    ...(configSchema ? { configSchema } : {}),
+  };
+}
+
 export function toOllamaTagModel(model: OpenAiCatalogModel, mode: "grouped" | "raw") {
   const actualModelId = model.id || model.root || "unknown";
   const canonicalMetadata = getCanonicalModelMetadata({
@@ -88,21 +118,7 @@ export function toOllamaTagModel(model: OpenAiCatalogModel, mode: "grouped" | "r
   const modelId =
     mode === "raw" ? actualModelId : getFamilyFirstPublishedModelId(actualModelId, family);
   const contextLength = typeof model.context_length === "number" ? model.context_length : 0;
-  const reasoningEffortValues = getReasoningEffortValues(model as VscodeCatalogModel);
-  const selectedReasoningEffort = reasoningEffortValues
-    ? inferSelectedReasoningEffort(model as VscodeCatalogModel, reasoningEffortValues) || "none"
-    : undefined;
-  const defaultReasoningEffort = reasoningEffortValues
-    ? getDefaultReasoningEffort(model as VscodeCatalogModel, reasoningEffortValues)
-    : undefined;
-  const supportedReasoningEfforts =
-    reasoningEffortValues && reasoningEffortValues.length > 0
-      ? buildSupportedReasoningEfforts(reasoningEffortValues)
-      : undefined;
-  const configSchema =
-    reasoningEffortValues && defaultReasoningEffort
-      ? buildReasoningConfigSchema(reasoningEffortValues, defaultReasoningEffort)
-      : undefined;
+  const reasoningFields = buildReasoningFields(model);
 
   return {
     name: modelId,
@@ -110,35 +126,13 @@ export function toOllamaTagModel(model: OpenAiCatalogModel, mode: "grouped" | "r
     modified_at: "2026-01-01T00:00:00Z",
     size: 0,
     digest: `omniroute:${modelId}`,
-    ...(reasoningEffortValues
-      ? {
-          supports_reasoning_effort: reasoningEffortValues,
-          supportsReasoningEffort: reasoningEffortValues,
-          supportedReasoningEfforts,
-          defaultReasoningEffort,
-          selected_reasoning_effort: selectedReasoningEffort,
-          selectedReasoningEffort: selectedReasoningEffort,
-          ...(configSchema ? { configurationSchema: configSchema } : {}),
-          ...(configSchema ? { configSchema } : {}),
-        }
-      : {}),
+    ...reasoningFields,
     details: {
       format: "openai",
       family,
       parameter_size: contextLength > 0 ? `${contextLength} ctx` : "unknown",
       quantization_level: "dynamic",
-      ...(reasoningEffortValues
-        ? {
-            supports_reasoning_effort: reasoningEffortValues,
-            supportsReasoningEffort: reasoningEffortValues,
-            supportedReasoningEfforts,
-            defaultReasoningEffort,
-            selected_reasoning_effort: selectedReasoningEffort,
-            selectedReasoningEffort: selectedReasoningEffort,
-            ...(configSchema ? { configurationSchema: configSchema } : {}),
-            ...(configSchema ? { configSchema } : {}),
-          }
-        : {}),
+      ...reasoningFields,
     },
   };
 }
