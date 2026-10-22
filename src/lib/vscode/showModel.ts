@@ -102,6 +102,94 @@ function buildCapabilities(model: OpenAiCatalogModel): string[] {
   return capabilities;
 }
 
+function buildReasoningFields(model: OpenAiCatalogModel) {
+  const reasoningEffortValues = getReasoningEffortValues(model as VscodeCatalogModel);
+  if (!reasoningEffortValues) return undefined;
+
+  const selectedReasoningEffort =
+    inferSelectedReasoningEffort(model as VscodeCatalogModel, reasoningEffortValues) || "none";
+  const defaultReasoningEffort = getDefaultReasoningEffort(
+    model as VscodeCatalogModel,
+    reasoningEffortValues
+  );
+  const supportedReasoningEfforts =
+    reasoningEffortValues.length > 0
+      ? buildSupportedReasoningEfforts(reasoningEffortValues)
+      : undefined;
+  const configSchema = defaultReasoningEffort
+    ? buildReasoningConfigSchema(reasoningEffortValues, defaultReasoningEffort)
+    : undefined;
+
+  return {
+    supports_reasoning_effort: reasoningEffortValues,
+    supportsReasoningEffort: reasoningEffortValues,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
+    selected_reasoning_effort: selectedReasoningEffort,
+    selectedReasoningEffort: selectedReasoningEffort,
+    ...(configSchema ? { configurationSchema: configSchema } : {}),
+    ...(configSchema ? { configSchema } : {}),
+  };
+}
+
+type ReasoningFields = ReturnType<typeof buildReasoningFields>;
+
+function buildModelCapabilities(model: OpenAiCatalogModel, reasoningFields: ReasoningFields) {
+  const modelCapabilities = model.capabilities ? { ...model.capabilities } : undefined;
+  if (!reasoningFields) return modelCapabilities;
+
+  return Object.assign(modelCapabilities || {}, {
+    reasoning: true,
+    thinking: true,
+    ...reasoningFields,
+  });
+}
+
+function buildArchitecture(
+  model: OpenAiCatalogModel,
+  family: string,
+  canonicalMetadata: ReturnType<typeof getCanonicalModelMetadata>
+) {
+  return normalizeArchitectureKey(
+    normalizeArchitectureSource(
+      canonicalMetadata?.providerAlias ||
+        canonicalMetadata?.provider ||
+        model.owned_by ||
+        family ||
+        "model"
+    )
+  );
+}
+
+function buildModelInfo(
+  model: OpenAiCatalogModel,
+  architecture: string,
+  displayName: string,
+  reasoningFields: ReasoningFields
+) {
+  const modelCapabilities = buildModelCapabilities(model, reasoningFields);
+  const hasContextLength = typeof model.context_length === "number";
+
+  return {
+    "general.architecture": architecture,
+    "general.basename": displayName,
+    ...(hasContextLength ? { context_length: model.context_length } : {}),
+    ...(hasContextLength ? { [`${architecture}.context_length`]: model.context_length } : {}),
+    ...(typeof model.max_output_tokens === "number"
+      ? { max_output_tokens: model.max_output_tokens }
+      : {}),
+    ...(Array.isArray(model.input_modalities) ? { input_modalities: model.input_modalities } : {}),
+    ...(Array.isArray(model.output_modalities)
+      ? { output_modalities: model.output_modalities }
+      : {}),
+    ...(Array.isArray(model.supported_endpoints)
+      ? { supported_endpoints: model.supported_endpoints }
+      : {}),
+    ...(modelCapabilities ? { capabilities: modelCapabilities } : {}),
+    ...reasoningFields,
+  };
+}
+
 export function buildShowPayload(
   model: OpenAiCatalogModel,
   displayName: string,
@@ -114,62 +202,13 @@ export function buildShowPayload(
   });
   const family = getOllamaModelFamily(model, canonicalMetadata?.metadata.family || null);
   const modelId = responseModelId || getFamilyFirstPublishedModelId(actualModelId, family);
-  const architectureSource = normalizeArchitectureSource(
-    canonicalMetadata?.providerAlias ||
-      canonicalMetadata?.provider ||
-      model.owned_by ||
-      family ||
-      "model"
-  );
-  const architecture = normalizeArchitectureKey(architectureSource);
-  const reasoningEffortValues = getReasoningEffortValues(model as VscodeCatalogModel);
-  const selectedReasoningEffort = reasoningEffortValues
-    ? inferSelectedReasoningEffort(model as VscodeCatalogModel, reasoningEffortValues) || "none"
-    : undefined;
-  const defaultReasoningEffort = reasoningEffortValues
-    ? getDefaultReasoningEffort(model as VscodeCatalogModel, reasoningEffortValues)
-    : undefined;
-  const supportedReasoningEfforts =
-    reasoningEffortValues && reasoningEffortValues.length > 0
-      ? buildSupportedReasoningEfforts(reasoningEffortValues)
-      : undefined;
-  const configSchema =
-    reasoningEffortValues && defaultReasoningEffort
-      ? buildReasoningConfigSchema(reasoningEffortValues, defaultReasoningEffort)
-      : undefined;
-  let modelCapabilities = model.capabilities ? { ...model.capabilities } : undefined;
-
-  if (reasoningEffortValues) {
-    modelCapabilities = modelCapabilities || {};
-    Object.assign(modelCapabilities, {
-      reasoning: true,
-      thinking: true,
-      supports_reasoning_effort: reasoningEffortValues,
-      supportsReasoningEffort: reasoningEffortValues,
-      supportedReasoningEfforts,
-      defaultReasoningEffort,
-      selected_reasoning_effort: selectedReasoningEffort,
-      selectedReasoningEffort: selectedReasoningEffort,
-      ...(configSchema ? { configurationSchema: configSchema } : {}),
-      ...(configSchema ? { configSchema } : {}),
-    });
-  }
+  const architecture = buildArchitecture(model, family, canonicalMetadata);
+  const reasoningFields = buildReasoningFields(model);
 
   return {
     model: modelId,
     remote_model: displayName,
-    ...(reasoningEffortValues
-      ? {
-          supports_reasoning_effort: reasoningEffortValues,
-          supportsReasoningEffort: reasoningEffortValues,
-          supportedReasoningEfforts,
-          defaultReasoningEffort,
-          selected_reasoning_effort: selectedReasoningEffort,
-          selectedReasoningEffort: selectedReasoningEffort,
-          ...(configSchema ? { configurationSchema: configSchema } : {}),
-          ...(configSchema ? { configSchema } : {}),
-        }
-      : {}),
+    ...reasoningFields,
     license: "proprietary",
     modelfile: `FROM ${modelId}`,
     parameters: "",
@@ -181,52 +220,9 @@ export function buildShowPayload(
       families: [family],
       parameter_size: "unknown",
       quantization_level: "dynamic",
-      ...(reasoningEffortValues
-        ? {
-            supports_reasoning_effort: reasoningEffortValues,
-            supportsReasoningEffort: reasoningEffortValues,
-            supportedReasoningEfforts,
-            defaultReasoningEffort,
-            selected_reasoning_effort: selectedReasoningEffort,
-            selectedReasoningEffort: selectedReasoningEffort,
-            ...(configSchema ? { configurationSchema: configSchema } : {}),
-            ...(configSchema ? { configSchema } : {}),
-          }
-        : {}),
+      ...reasoningFields,
     },
-    model_info: {
-      "general.architecture": architecture,
-      "general.basename": displayName,
-      ...(typeof model.context_length === "number" ? { context_length: model.context_length } : {}),
-      ...(typeof model.context_length === "number"
-        ? { [`${architecture}.context_length`]: model.context_length }
-        : {}),
-      ...(typeof model.max_output_tokens === "number"
-        ? { max_output_tokens: model.max_output_tokens }
-        : {}),
-      ...(Array.isArray(model.input_modalities)
-        ? { input_modalities: model.input_modalities }
-        : {}),
-      ...(Array.isArray(model.output_modalities)
-        ? { output_modalities: model.output_modalities }
-        : {}),
-      ...(Array.isArray(model.supported_endpoints)
-        ? { supported_endpoints: model.supported_endpoints }
-        : {}),
-      ...(modelCapabilities ? { capabilities: modelCapabilities } : {}),
-      ...(reasoningEffortValues
-        ? {
-            supports_reasoning_effort: reasoningEffortValues,
-            supportsReasoningEffort: reasoningEffortValues,
-            supportedReasoningEfforts,
-            defaultReasoningEffort,
-            selected_reasoning_effort: selectedReasoningEffort,
-            selectedReasoningEffort: selectedReasoningEffort,
-            ...(configSchema ? { configurationSchema: configSchema } : {}),
-            ...(configSchema ? { configSchema } : {}),
-          }
-        : {}),
-    },
+    model_info: buildModelInfo(model, architecture, displayName, reasoningFields),
     capabilities: buildCapabilities(model),
   };
 }
