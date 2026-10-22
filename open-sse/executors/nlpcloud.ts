@@ -1,4 +1,3 @@
-import { buildSynthesizedTextStream as buildSynthesizedStream } from "../utils/synthesizedTextStream.ts";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -8,6 +7,7 @@ import {
   type ProviderCredentials,
 } from "./base.ts";
 import { PROVIDERS } from "../config/constants.ts";
+import { buildSynthesizedTextStream as buildSynthesizedStream } from "../utils/synthesizedTextStream.ts";
 
 type JsonRecord = Record<string, unknown>;
 type OpenAIMessage = {
