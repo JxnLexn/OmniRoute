@@ -1,4 +1,15 @@
 {
+  "accountPreferences": {
+    "title": "Preferências de contas",
+    "description": "Defina várias contas como preferenciais ou de reserva para esta configuração de roteamento. O roteamento automático classifica as contas dentro de cada nível. As contas não listadas permanecem normais. As permissões, os limites de cota e os vínculos de turno existentes continuam válidos.",
+    "preferred": "Preferencial",
+    "normal": "Normal",
+    "reserve": "Reserva",
+    "excluded": "Excluída",
+    "loading": "Carregando contas…",
+    "error": "Não foi possível carregar as contas. Reabra o editor para tentar novamente.",
+    "missing": "Conta indisponível ({id})"
+  },
   "codexKeyServiceMode": {
     "title": "Modo de serviço Codex para esta chave de API",
     "description": "Aplica-se a pedidos Codex, incluindo modelos Codex em combinações. Os modos forçados sobrepõem-se ao cliente, às definições globais e às predefinições da ligação. Os restantes fornecedores permanecem inalterados.",
