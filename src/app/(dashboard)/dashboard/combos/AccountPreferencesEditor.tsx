@@ -21,10 +21,13 @@ export default function AccountPreferencesEditor({
   value,
   onChange,
   disabled = false,
+  providerIds,
 }: {
   value: unknown;
   onChange: (value: Record<string, AccountPreference>) => void;
   disabled?: boolean;
+  /** The builder's current candidate pool; an empty scope means no eligible providers. */
+  providerIds?: readonly string[];
 }) {
   const t = useTranslations("accountPreferences");
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -59,17 +62,22 @@ export default function AccountPreferencesEditor({
         provider: "",
         name: t("missing", { id }),
       })),
-  ];
+  ].filter((connection) => providerIds === undefined || providerIds.includes(connection.provider));
   return (
     <CollapsibleSection
       title={t("title")}
       defaultOpen={false}
-      count={Object.keys(preferences).length}
+      count={rows.filter((connection) => preferences[connection.id]).length}
     >
       <p className="mb-3 text-xs text-text-muted">{t("description")}</p>
       {state === "loading" && <p role="status">{t("loading")}</p>}
       {state === "error" && <p role="alert">{t("error")}</p>}
-      <div className="space-y-3">
+      <div
+        role="region"
+        aria-label={t("title")}
+        tabIndex={0}
+        className="max-h-[min(50dvh,24rem)] overflow-y-auto overscroll-contain space-y-3 pr-1"
+      >
         {rows.map((connection) => {
           const label = [connection.provider, connection.name || connection.email || connection.id]
             .filter(Boolean)
