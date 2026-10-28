@@ -1,4 +1,15 @@
 {
+  "accountPreferences": {
+    "title": "账户偏好设置",
+    "description": "为此路由配置优先使用多个账户，或将其留作备用。自动路由会在每个层级内对账户进行排序。未列出的账户按正常方式使用。权限、配额限制以及现有的轮次绑定仍然适用。",
+    "preferred": "优先",
+    "normal": "普通",
+    "reserve": "备用",
+    "excluded": "排除",
+    "loading": "正在加载账户…",
+    "error": "无法加载账户。重新打开编辑器以重试。",
+    "missing": "账户不可用（{id}）"
+  },
   "codexKeyServiceMode": {
     "title": "此 API 密钥的 Codex 服务模式",
     "description": "适用于 Codex 请求，包括组合中的 Codex 模型。强制模式会覆盖客户端、全局设置和连接默认值。其他提供者不受影响。",

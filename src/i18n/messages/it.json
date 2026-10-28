@@ -1,4 +1,15 @@
 {
+  "accountPreferences": {
+    "title": "Preferenze degli account",
+    "description": "Imposta più account come preferiti oppure tienili di riserva per questa combinazione. L'instradamento automatico assegna una priorità agli account all'interno di ogni livello. Gli account non elencati restano normali. Le autorizzazioni, i limiti di quota e le associazioni ai turni esistenti continuano ad applicarsi.",
+    "preferred": "Preferito",
+    "normal": "Normale",
+    "reserve": "Di riserva",
+    "excluded": "Escluso",
+    "loading": "Caricamento degli account…",
+    "error": "Impossibile caricare gli account. Riapri l'editor per riprovare.",
+    "missing": "Account non disponibile ({id})"
+  },
   "codexKeyServiceMode": {
     "title": "Modalità di servizio Codex per questa chiave API",
     "description": "Si applica alle richieste Codex, inclusi i modelli Codex all'interno delle combinazioni. Le modalità forzate hanno la precedenza sul client, sulle impostazioni globali e sui valori predefiniti della connessione. Gli altri provider rimangono invariati.",

@@ -567,6 +567,7 @@
       "trafficInspector"
     ],
     "combos": [
+      "accountPreferences",
       "agentSkills",
       "analytics",
       "breadcrumbs",
@@ -1423,6 +1424,7 @@
       "landing",
       "noAuthProvider",
       "oauthModal",
+      "providers",
       "proxyConfigModal",
       "proxyLog",
       "proxyLogger",
@@ -1765,6 +1767,7 @@
       "landing",
       "noAuthProvider",
       "oauthModal",
+      "providers",
       "proxyConfigModal",
       "proxyLog",
       "proxyLogger",
