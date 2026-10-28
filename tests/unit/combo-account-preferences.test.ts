@@ -1,6 +1,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import {
+  accountPreferenceAttemptConfig,
   orderAccountPreferences,
   firstAccountPreferenceTier,
   readAccountPreferences,
@@ -9,6 +10,13 @@ import { resolveAutoStrategyOrder } from "../../open-sse/services/combo/resolveA
 import { comboRuntimeConfigSchema } from "../../src/shared/validation/schemas/combo.ts";
 import { resetDbInstance } from "../../src/lib/db/core.ts";
 after(() => resetDbInstance());
+
+test("account preferences disable speculative hedging without mutating stored configuration", () => {
+  const config = { hedging: true, hedgeDelayMs: 0, maxRetries: 1 };
+  assert.deepEqual(accountPreferenceAttemptConfig(config, true), { ...config, hedging: false });
+  assert.equal(config.hedging, true);
+  assert.equal(accountPreferenceAttemptConfig(config, false), config);
+});
 
 const prefs = {
   a: "preferred",

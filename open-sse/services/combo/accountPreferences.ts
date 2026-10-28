@@ -2,6 +2,14 @@
 export type AccountPreference = "preferred" | "normal" | "reserve" | "excluded";
 export type AccountPreferences = Record<string, AccountPreference>;
 
+/** Reserve means fallback, never speculative parallel dispatch. Request-local copy only. */
+export function accountPreferenceAttemptConfig<T extends { hedging?: boolean }>(
+  config: T,
+  enabled: boolean
+): T {
+  return enabled ? { ...config, hedging: false } : config;
+}
+
 export function readAccountPreferences(value: unknown): AccountPreferences {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(

@@ -16,7 +16,10 @@ import { buildTargetTimeoutRunner } from "./combo/targetTimeoutRunner.ts";
 import { costKey, resolvePoolCosts } from "./combo/candidateCost.ts";
 import { getComboMetrics } from "./comboMetrics.ts";
 import { qualityScoreFor } from "./routing/index.ts";
-import { accountPreferenceRank } from "./combo/accountPreferences.ts";
+import {
+  accountPreferenceRank,
+  accountPreferenceAttemptConfig,
+} from "./combo/accountPreferences.ts";
 import { parseAutoConfig } from "./combo/autoConfig.ts";
 import {
   resolveComboQueueDepth,
@@ -728,13 +731,14 @@ async function handleComboChatInner({
     effectiveSessionId,
     pinnedModel,
     clientRequestedStream,
-    config,
+    config: setupConfig,
     comboTargetTimeoutMs,
     reasoningTokenBufferEnabled,
   } = phaseComboSetup(comboCtx);
   body = comboCtx.body;
   const hasAccountPreferences =
     strategy === "auto" && Object.keys(parseAutoConfig(combo, []).accountPreferences).length > 0;
+  const config = accountPreferenceAttemptConfig(setupConfig, hasAccountPreferences);
 
   // #10681: opaque per-invocation decision trace (safe routing metadata only).
   const traceInvocationId = invocationId ?? createInvocationId();

@@ -159,7 +159,8 @@ affinity may retain an eligible account; excluding the account bound to a native
 turn stops that turn instead of silently changing accounts.
 
 Configured preferences use the account-aware Auto path: unbound context-cache,
-smart-pipeline, chaos and shadow shortcuts are not dispatched. Other combo
+smart-pipeline, chaos and shadow shortcuts are not dispatched. Speculative hedging
+is disabled for these requests so reserve accounts cannot race preferred ones. Other combo
 strategies do not interpret this setting. Changing a combo away from Auto keeps
 the saved preferences for a later switch back.
 
