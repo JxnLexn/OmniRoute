@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import AccountPreferencesEditor from "./AccountPreferencesEditor";
 import Card from "@/shared/components/Card";
 import {
   DEFAULT_INTELLIGENT_WEIGHTS,
@@ -83,11 +84,13 @@ export default function BuilderIntelligentStep({
   config,
   onChange,
   activeProviders,
+  strategy = "auto",
 }: {
   t: any;
   config: Record<string, unknown>;
   onChange: (nextConfig: Record<string, unknown>) => void;
   activeProviders: any[];
+  strategy?: string;
 }) {
   const normalizedConfig = normalizeIntelligentRoutingConfig(config);
   const isSlaAwareStrategy = ["sla-aware", "sla"].includes(normalizedConfig.routerStrategy);
@@ -110,6 +113,12 @@ export default function BuilderIntelligentStep({
 
   return (
     <div className="flex flex-col gap-3">
+      {strategy === "auto" && (
+        <AccountPreferencesEditor
+          value={config.accountPreferences}
+          onChange={(accountPreferences) => updateConfig({ accountPreferences })}
+        />
+      )}
       <Card.Section>
         <div className="flex items-start justify-between gap-3">
           <div>
