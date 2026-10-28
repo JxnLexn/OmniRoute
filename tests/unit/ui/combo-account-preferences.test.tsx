@@ -22,6 +22,15 @@ function Harness() {
   );
 }
 
+function choose(element: HTMLElement, value: string, label: string) {
+  if (element.tagName === "SELECT") {
+    fireEvent.change(element, { target: { value } });
+  } else {
+    fireEvent.keyDown(element, { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: label }));
+  }
+}
+
 it("edits several accounts independently and clears only the account restored to normal", async () => {
   vi.stubGlobal(
     "fetch",
@@ -40,15 +49,13 @@ it("edits several accounts independently and clears only the account restored to
   fireEvent.click(screen.getByRole("button", { name: /Account preferences/ }));
   const first = await screen.findByRole("combobox", { name: "openai · A" });
   const third = await screen.findByRole("combobox", { name: "openai · C" });
-  fireEvent.keyDown(third, { key: "Enter" });
-  fireEvent.click(screen.getByRole("option", { name: "Preferred" }));
+  choose(third, "preferred", "Preferred");
   expect(JSON.parse(screen.getByTestId("value").textContent!)).toEqual({
     a: "preferred",
     b: "reserve",
     c: "preferred",
   });
-  fireEvent.keyDown(first, { key: "Enter" });
-  fireEvent.click(screen.getByRole("option", { name: "Normal" }));
+  choose(first, "normal", "Normal");
   expect(JSON.parse(screen.getByTestId("value").textContent!)).toEqual({
     b: "reserve",
     c: "preferred",
