@@ -116,6 +116,11 @@ export default function BuilderIntelligentStep({
       {strategy === "auto" && (
         <AccountPreferencesEditor
           value={config.accountPreferences}
+          providerIds={
+            normalizedConfig.candidatePool.length
+              ? normalizedConfig.candidatePool
+              : providerOptions.map((provider) => provider.id)
+          }
           onChange={(accountPreferences) => updateConfig({ accountPreferences })}
         />
       )}
