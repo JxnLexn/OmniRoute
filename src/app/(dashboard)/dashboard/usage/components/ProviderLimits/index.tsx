@@ -16,6 +16,8 @@ import {
   quotaStatusLevel,
 } from "./utils";
 import Card from "@/shared/components/Card";
+import ProviderFilter from "./ProviderFilter";
+import { parseProviderFilter } from "./providerFilterStorage";
 import { CardSkeleton } from "@/shared/components/Loading";
 import { pickDisplayValue } from "@/shared/utils/maskEmail";
 import {
@@ -234,9 +236,13 @@ export default function ProviderLimits({
     if (typeof window === "undefined") return "all";
     return localStorage.getItem(LS_ENV_FILTER) || "all";
   });
-  const [providerFilter, setProviderFilter] = useState<string>(() => {
-    if (typeof window === "undefined") return "all";
-    return localStorage.getItem(LS_PROVIDER_FILTER) || "all";
+  const [providerFilter, setProviderFilter] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return parseProviderFilter(localStorage.getItem(LS_PROVIDER_FILTER) || "all");
+    } catch {
+      return [];
+    }
   });
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
     if (typeof window === "undefined") return "full";
@@ -759,10 +765,10 @@ export default function ProviderLimits({
     }
   }, []);
 
-  const handleSetProviderFilter = useCallback((value: string) => {
+  const handleSetProviderFilter = useCallback((value: string[]) => {
     setProviderFilter(value);
     try {
-      localStorage.setItem(LS_PROVIDER_FILTER, value);
+      localStorage.setItem(LS_PROVIDER_FILTER, JSON.stringify(value));
     } catch {
       /* ignore */
     }
@@ -1006,31 +1012,20 @@ export default function ProviderLimits({
             })}
           </div>
 
-          {/* Provider filter — single-select dropdown of providers actually
-              present in the current account set. Auto-falls back to "all" if
-              the persisted choice no longer exists in this session. */}
-          {providerOptions.length > 1 && (
+          {/* Keep the reset available even if selected providers disappear. */}
+          {(providerOptions.length > 1 || providerFilter.length > 0) && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mr-1">
                 {tr("filterProviderLabel", "Provider")}
               </span>
-              <select
-                value={
-                  providerFilter === "all" || providerOptions.includes(providerFilter)
-                    ? providerFilter
-                    : "all"
-                }
-                onChange={(event) => handleSetProviderFilter(event.target.value)}
-                aria-label={tr("filterProviderAriaLabel", "Filter quota providers")}
-                className="h-8 rounded-full border border-border bg-transparent px-3 text-xs font-semibold text-text-muted cursor-pointer"
-              >
-                <option value="all">{tr("filterProviderAll", "All providers")}</option>
-                {providerOptions.map((provider) => (
-                  <option key={provider} value={provider}>
-                    {PROVIDER_LABEL[provider] || provider}
-                  </option>
-                ))}
-              </select>
+              <ProviderFilter
+                options={providerOptions}
+                value={providerFilter}
+                onChange={handleSetProviderFilter}
+                labels={PROVIDER_LABEL}
+                allLabel={tr("filterProviderAll", "All providers")}
+                ariaLabel={tr("filterProviderAriaLabel", "Filter quota providers")}
+              />
             </div>
           )}
 
