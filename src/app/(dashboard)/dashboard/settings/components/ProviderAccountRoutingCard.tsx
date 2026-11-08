@@ -17,9 +17,16 @@ type Props = {
 };
 
 const STRATEGY_OPTIONS = ACCOUNT_FALLBACK_STRATEGY_VALUES.filter((v) =>
-  ["fill-first", "round-robin", "priority", "p2c", "random", "least-used", "expiry-first"].includes(
-    v
-  )
+  [
+    "cache-aware",
+    "fill-first",
+    "round-robin",
+    "priority",
+    "p2c",
+    "random",
+    "least-used",
+    "expiry-first",
+  ].includes(v)
 );
 
 function clampProviderStickyLimit(raw: string): number {
@@ -154,6 +161,9 @@ export default function ProviderAccountRoutingCard({ providerKey, connectionCoun
           />
         )}
       </div>
+      {strategy === "cache-aware" && (
+        <p className="mt-2 text-xs text-text-muted">{t("cacheAwareAccountDesc")}</p>
+      )}
     </div>
   );
 }

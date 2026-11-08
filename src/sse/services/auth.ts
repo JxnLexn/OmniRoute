@@ -984,7 +984,11 @@ export async function getProviderCredentials(
     // Fetched early so the session-affinity-pin override (#5903) can consult
     // the TTL before forcedConnectionId narrows the connection pool.
     const settings = await getCachedSettings();
-    const sessionAffinityTtlMs = resolveSessionAffinityTtlMs(provider, options, settings);
+    const sessionAffinityTtlMs = resolveSessionAffinityTtlMs(
+      resolvedId || provider,
+      options,
+      settings
+    );
 
     // Fix #922: Check for aliases (nvidia/nvidia_nim) to ensure credentials are found
     const providersToSearch = await getProviderSearchPool(provider);

@@ -7106,6 +7106,7 @@
     "fallbackRetryBackendTitle": "Fallback-Backend für Wiederholungen"
   },
   "settings": {
+    "cacheAwareAccountDesc": "Hält Anfragen mit derselben Sitzungs- oder Cache-Kennung bei einem geeigneten Account. Verwendet die eingestellte Sitzungsbindung, sonst 30 Minuten. Bei Nichtverfügbarkeit wird ausgewichen; ohne Kennung gilt fill-first. Cache-Treffer beim Anbieter sind nicht garantiert.",
     "title": "Einstellungen",
     "general": "Allgemein",
     "security": "Sicherheit",

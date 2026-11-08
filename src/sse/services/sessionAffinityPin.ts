@@ -452,6 +452,8 @@ export interface AffinityPinOptions {
  * carries the value over — see migration 124_generic_session_affinity_ttl.sql).
  */
 export interface AffinityPinSettings {
+  fallbackStrategy?: string;
+  providerStrategies?: Record<string, { fallbackStrategy?: string }>;
   sessionAffinityTtlMs?: number | null;
   codexSessionAffinityTtlMs?: number | null;
 }
@@ -460,12 +462,13 @@ export interface AffinityPinSettings {
  * Resolve the effective session-affinity TTL for any provider (#7274 — previously
  * hardcoded to codex only): an explicit per-request override wins, else the
  * persisted generic setting (falling back to the legacy codex-only key for
- * pre-migration callers), else 0 (disabled). Kept here so auth.ts can reuse it at
+ * pre-migration callers), else 30 minutes for the effective cache-aware account
+ * strategy, otherwise 0 (disabled). Kept here so auth.ts can reuse it at
  * both the pin-override site and the downstream `selectSessionAffinityConnection`
  * site with one call.
  */
 export function resolveSessionAffinityTtlMs(
-  _provider: string,
+  provider: string,
   options: AffinityPinOptions,
   settings: AffinityPinSettings
 ): number {
@@ -473,6 +476,12 @@ export function resolveSessionAffinityTtlMs(
   if (Number.isFinite(override) && override > 0) return override;
   const configured = Number(settings.sessionAffinityTtlMs ?? settings.codexSessionAffinityTtlMs);
   if (Number.isFinite(configured) && configured > 0) return configured;
+  // Explicitly choosing cache-aware enables the existing durable affinity store
+  // for this provider even when generic affinity is disabled. No global setting
+  // is changed; eligibility, identity checks and failure handling remain shared.
+  const strategy =
+    settings.providerStrategies?.[provider]?.fallbackStrategy || settings.fallbackStrategy;
+  if (strategy === "cache-aware") return 30 * 60 * 1000;
   return 0;
 }
 

@@ -7141,6 +7141,7 @@
     "fallbackRetryBackendTitle": "ਫਾਲਬੈਕ ਰੀਟ੍ਰਾਈ ਬੈਕਏਂਡ"
   },
   "settings": {
+    "cacheAwareAccountDesc": "Keeps requests with the same session or cache identity on one eligible account. Uses the configured session-affinity duration, or 30 minutes when it is disabled. Falls back when that account is unavailable; without an identity, uses fill-first. Provider cache hits are not guaranteed.",
     "title": "ਸੈਟਿੰਗਾਂ",
     "general": "ਆਮ",
     "security": "ਸੁਰੱਖਿਆ",
