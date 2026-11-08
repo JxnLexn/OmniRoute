@@ -863,6 +863,11 @@ html:root.ci-theme {
   --ci-color-accent-hover: #c93d4e;
   --ci-color-accent-active: #c93d4e;
   --ci-color-accent-foreground: #ffffff;
+  --ci-color-control-active-bg: #e54d5e;
+  --ci-color-control-active-fg: #ffffff;
+  --ci-color-control-thumb: #71717a;
+  --ci-color-control-thumb-checked: #ffffff;
+  --ci-color-live: #22c55e;
   --ci-color-accent-ink: #b72c42;
   --ci-color-accent-surface-subtle: rgb(229 77 94 / 0.08);
   --ci-color-accent-surface-strong: rgb(229 77 94 / 0.16);
@@ -886,6 +891,7 @@ html:root.ci-theme.dark {
   --ci-color-text: #e6e6ef;
   --ci-color-heading: #e6e6ef;
   --ci-color-text-muted: #a1a1aa;
+  --ci-color-control-thumb: #a1a1aa;
   --ci-color-text-subtle: #a1a1aa;
   --ci-color-border: rgb(255 255 255 / 0.08);
   --ci-color-border-subtle: rgb(255 255 255 / 0.04);
