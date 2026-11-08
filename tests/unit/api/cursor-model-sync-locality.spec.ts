@@ -28,9 +28,11 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 // Machine identity is not a Cursor CLI execution; keep this unrelated auth dependency deterministic.
-vi.mock("@/lib/machineToken", () => ({
-  getMachineTokenSync: () => "fixture-machine-token",
-  getLegacyCliTokenSync: () => "fixture-legacy-token",
+vi.mock("@/shared/utils/machineId", () => ({
+  getConsistentMachineId: async () => "fixture-machine-id",
+  getRawMachineId: async () => "fixture-machine-id",
+  resetMachineIdCache: () => {},
+  isBrowser: () => false,
 }));
 
 const providerBoundary = vi.hoisted(() => ({ fetch: vi.fn() }));
