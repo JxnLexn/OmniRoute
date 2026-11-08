@@ -106,10 +106,10 @@ test("the coral/indigo rgba() leftovers and the orphan legacy blocks are gone (#
   );
 });
 
-test("the graph-paper grid, the coral/indigo palette and the macOS font stack are gone", () => {
+test("the fork restores coral while retaining the current typography and grid-free layout", () => {
   assert.doesNotMatch(css, /body::before/);
   assert.doesNotMatch(css, /--grid-line|--grid-size|--section-alt/);
-  assert.doesNotMatch(css, /#e54d5e|#6366f1|#8b5cf6/);
+  assert.match(css, /--ci-color-accent: #e54d5e;/);
   assert.doesNotMatch(css, /"SF Pro Text"/);
   const theme = block("@theme inline {");
   assert.match(theme, /--font-sans:\s*var\(--ci-font-ui\);/);
@@ -200,50 +200,15 @@ test("the Button warning variant and Badge tones come from the kit, with no loca
   }
 });
 
-test("no class literal pairs a solid bg-accent/bg-primary with text-white (lime needs dark ink)", () => {
-  // `--color-accent` / `--color-primary` are the kit's lime (#d8ff00): white on it is ~1.1:1.
-  // Solid token = `bg-accent` / `bg-primary` followed by whitespace, a quote or the end —
-  // `bg-accent/10`, `bg-accent-light`, `bg-primary/20` are tints and stay out of scope.
-  const SOLID = /(?<![\w/:-])bg-(?:accent|primary)(?=[\s"'`]|$)/;
-  const WHITE = /(?<![\w/:-])text-white(?=[\s"'`]|$)/;
-  const LITERAL = /"[^"]*"|'[^'\n]*'|`[^`]*`/g;
-  const offenders: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith(".tsx")) {
-        const src = fs.readFileSync(full, "utf8");
-        for (const m of src.matchAll(LITERAL)) {
-          const line = src.slice(0, m.index).split("\n").length;
-          // A template literal is judged per branch: the static part plus ONE `${…}` branch at
-          // a time, so `${cond ? "bg-primary text-accent-foreground" : "bg-red-500 text-white"}`
-          // is fine while `bg-primary ${cond ? "text-white" : ""}` is not.
-          const units: string[] = [];
-          if (m[0].startsWith("`") && m[0].includes("${")) {
-            const stat = m[0].replace(/\$\{[^}]*\}/g, " ");
-            const branches = [...m[0].matchAll(/\$\{[^}]*\}/g)].flatMap(
-              (e) => e[0].match(/"[^"]*"|'[^']*'/g) ?? []
-            );
-            units.push(stat, ...branches.map((b) => `${stat} ${b}`));
-          } else units.push(m[0]);
-          if (units.some((u) => SOLID.test(u) && WHITE.test(u))) {
-            offenders.push(`${path.relative(ROOT, full)}:${line}`);
-          }
-        }
-      }
-    }
-  };
-  walk(path.join(ROOT, "src"));
-  assert.deepEqual(
-    offenders,
-    [],
-    "solid accent surface with white ink (use text-accent-foreground). If the literal is a " +
-      "template whose bg-accent/bg-primary sits in one `${cond ? … : …}` branch while text-white " +
-      "belongs to another background, this is a legitimate split: move the ink into each branch " +
-      "by hand instead of replacing it globally:\n" +
-      offenders.join("\n")
-  );
+test("fork controls and navigation use coral with readable foregrounds", () => {
+  const fork = block("html:root.ci-theme {");
+  const dark = block("html:root.ci-theme.dark {");
+  assert.match(fork, /--ci-color-accent: #e54d5e;/);
+  assert.match(fork, /--ci-color-control-active-bg: #e54d5e;/);
+  assert.match(fork, /--ci-color-control-active-fg: #ffffff;/);
+  assert.match(fork, /--ci-color-background: #f9f9fb;/);
+  assert.match(dark, /--ci-color-background: #0b0e14;/);
+  assert.match(dark, /--ci-sidebar-active-fg: #e54d5e;/);
 });
 
 test("STATUS_HEX mirrors the kit status palette (ReactFlow/SVG need hex)", async () => {
