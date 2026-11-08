@@ -531,3 +531,10 @@ test("the primary Badge tone uses the kit accent ink in every look (F4)", () => 
   );
   assert.doesNotMatch(css, /\.ci-badge\[data-tone="primary"\]/);
 });
+
+test("fork primary buttons retain the v3.8.52 gradient in either kit palette", () => {
+  const root = block("html:root.ci-theme {");
+  assert.match(root, /--ci-button-primary-bg: linear-gradient\(135deg, #e54d5e, #a855f7\);/);
+  assert.match(root, /--ci-button-primary-fg: #ffffff;/);
+  assert.match(root, /--ci-button-primary-hover: linear-gradient\(135deg, #c93d4e, #9333ea\);/);
+});

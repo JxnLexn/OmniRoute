@@ -860,6 +860,9 @@ html:root.ci-theme {
   --ci-color-border: rgb(0 0 0 / 0.08);
   --ci-color-border-subtle: rgb(0 0 0 / 0.04);
   --ci-color-accent: #e54d5e;
+  --ci-button-primary-bg: linear-gradient(135deg, #e54d5e, #a855f7);
+  --ci-button-primary-fg: #ffffff;
+  --ci-button-primary-hover: linear-gradient(135deg, #c93d4e, #9333ea);
   --ci-color-accent-hover: #c93d4e;
   --ci-color-accent-active: #c93d4e;
   --ci-color-accent-foreground: #ffffff;
