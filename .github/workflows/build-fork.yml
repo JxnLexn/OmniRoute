@@ -3,6 +3,10 @@ name: Build Fork Image
 on:
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!.github/workflows/**"
+      - ".github/workflows/build-fork.yml"
   workflow_dispatch:
 
 concurrency:
