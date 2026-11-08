@@ -46,6 +46,7 @@ import { applyStrategyOrdering } from "./applyStrategyOrdering.ts";
 import { expandTargetsForAllStrategies } from "./connectionAwareExpansion.ts";
 import { clampComboDepth } from "./comboPredicates.ts";
 import {
+  computeCompatRejectedTargets,
   describeCapabilityFilterExhaustion,
   filterTargetsByRequestCompatibility,
   resolveComboTargets,
@@ -142,6 +143,12 @@ export interface ResolvedComboTargetPipeline {
    * pipeline already releases it on any earlyResponse it produces after selection.
    */
   quotaShareRelease: (() => void) | null;
+  /**
+   * #6238 last-resort tier: the targets the compat pre-filter rejected, bounded
+   * by the pre-filter pool. The dispatch loop probes this set when every
+   * compat-kept target was skipped without a single real attempt.
+   */
+  compatRejectedTargets: ResolvedComboTarget[];
 }
 
 export type ResolveComboTargetPipelineResult =
@@ -453,7 +460,8 @@ function logPipelineFallthrough(pipelineErr: unknown, log: ComboLogger): void {
  */
 async function orderByStrategy(
   deps: ResolveComboTargetPipelineDeps,
-  initialOrderedTargets: ResolvedComboTarget[]
+  initialOrderedTargets: ResolvedComboTarget[],
+  exclusions: PreDispatchExclusion[]
 ): Promise<
   | { earlyResponse: Response }
   | {
@@ -474,6 +482,7 @@ async function orderByStrategy(
       resilienceSettings: deps.resilienceSettings,
       log,
       buildAutoCandidates: deps.buildAutoCandidates,
+      apiKeyAllowedConnections: deps.apiKeyAllowedConnections,
     });
     if ("earlyResponse" in autoResult) return { earlyResponse: autoResult.earlyResponse };
     return {
@@ -492,6 +501,7 @@ async function orderByStrategy(
       log,
       apiKeyAllowedConnections: deps.apiKeyAllowedConnections,
       sessionKey: deps.relayOptions?.sessionId,
+      exclusions,
     }
   );
   return { orderedTargets, autoUsedExplicitRouter: false, quotaShareRelease };
@@ -511,7 +521,11 @@ async function applyContinuityFilters(
   deps: ResolveComboTargetPipelineDeps,
   initialOrderedTargets: ResolvedComboTarget[]
 ): Promise<
-  | { orderedTargets: ResolvedComboTarget[]; sticky: ApplyStickinessResult }
+  | {
+      orderedTargets: ResolvedComboTarget[];
+      sticky: ApplyStickinessResult;
+      compatRejectedTargets: ResolvedComboTarget[];
+    }
   | { earlyResponse: Response }
 > {
   const { strategy, body, combo, config, settings, log, relayOptions } = deps;
@@ -574,6 +588,14 @@ async function applyContinuityFilters(
     failOpen: compatFilterFailOpen,
     outputLimitAdvisory,
   });
+  // #6238: keep the targets the compat pre-filter rejected so the dispatch loop
+  // can probe them as a last-resort fallback tier when every compat-kept target
+  // later turns out runtime-unavailable (mirrors the round-robin path).
+  const compatRejectedTargets = computeCompatRejectedTargets(
+    preCompatTargets,
+    orderedTargets,
+    body
+  );
   if (orderedTargets.length === 0 && preCompatTargets.length > 0) {
     const exhaustion = describeCapabilityFilterExhaustion(preCompatTargets, body, combo.name);
     if (exhaustion) {
@@ -619,7 +641,7 @@ async function applyContinuityFilters(
       }),
     };
   }
-  return { orderedTargets, sticky };
+  return { orderedTargets, sticky, compatRejectedTargets };
 }
 
 /**
@@ -852,6 +874,7 @@ export async function resolveComboTargetPipeline(
   // continuity/stickiness, prompt-cache stage) sees per-connection targets.
   // Stickiness is applied later inside applyContinuityFilters, so its pin key
   // naturally matches the expanded connectionId targets.
+  const expansionExclusions: PreDispatchExclusion[] = [];
   orderedTargets = await expandTargetsForAllStrategies({
     strategy,
     targets: orderedTargets,
@@ -860,7 +883,14 @@ export async function resolveComboTargetPipeline(
     settings: settings as Record<string, unknown> | null | undefined,
     log,
     apiKeyAllowedConnectionIds: deps.apiKeyAllowedConnections,
+    exclusions: expansionExclusions,
   });
+  // Classify at the expansion boundary: later filters may empty a surviving
+  // pool for unrelated reasons and must retain their own error contracts.
+  if (orderedTargets.length === 0) {
+    const coolingDown = buildAllTargetsCoolingDownResponse(expansionExclusions);
+    if (coolingDown) return { earlyResponse: coolingDown };
+  }
 
   logTargetPoolSize(strategy, allCombos, orderedTargets, stickyWeightedKey, log);
 
@@ -870,8 +900,15 @@ export async function resolveComboTargetPipeline(
   );
   if (pipelineResponse) return { earlyResponse: pipelineResponse };
 
-  const ordering = await orderByStrategy(deps, orderedTargets);
+  const ordering = await orderByStrategy(deps, orderedTargets, expansionExclusions);
   if ("earlyResponse" in ordering) return ordering;
+  if (ordering.orderedTargets.length === 0) {
+    const coolingDown = buildAllTargetsCoolingDownResponse(expansionExclusions);
+    if (coolingDown) {
+      ordering.quotaShareRelease?.();
+      return { earlyResponse: coolingDown };
+    }
+  }
   const { autoUsedExplicitRouter } = ordering;
   let { quotaShareRelease } = ordering;
   const drawnId = ordering.orderedTargets[0]?.connectionId ?? "";
@@ -921,5 +958,6 @@ export async function resolveComboTargetPipeline(
     sticky: continuity.sticky,
     preScreenMap,
     quotaShareRelease,
+    compatRejectedTargets: continuity.compatRejectedTargets,
   };
 }

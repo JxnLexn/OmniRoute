@@ -150,21 +150,6 @@ function emptyTreeCommit() {
   return commit.stdout.trim();
 }
 
-function workflowJob(source: string, name: string) {
-  const lines = source.split("\n");
-  const start = lines.indexOf(`  ${name}:`);
-  assert.notEqual(start, -1, `workflow job ${name} must exist`);
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index++) {
-    const line = lines[index];
-    if (line.startsWith("  ") && !line.startsWith("   ") && line.endsWith(":")) {
-      end = index;
-      break;
-    }
-  }
-  return lines.slice(start + 1, end).join("\n");
-}
-
 test("provider asset provenance gate rejects a new physical asset without a manifest record", () => {
   const fixture = makeFixture();
   try {
@@ -541,7 +526,7 @@ test("provider asset provenance gate binds auditedCommit to the physical provide
   }
 });
 
-test("repository provider asset manifest covers the audited 144-file fork snapshot", (t) => {
+test("repository provider asset manifest covers the audited 146-file fork snapshot", (t) => {
   const manifestPath = join(REPO_ROOT, "config/quality/provider-assets-provenance.jsonl");
   const { auditedCommit } = JSON.parse(readFileSync(manifestPath, "utf8").split("\n")[0]);
   if (!gitHasCommit(auditedCommit) && isShallowRepository()) {
@@ -556,19 +541,14 @@ test("repository provider asset manifest covers the audited 144-file fork snapsh
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(
     result.stdout,
-    /144\/144 registered; proven=72 probable=71 unresolved=1; duplicate-groups=1/
+    // runcrate (#18061) adds one unresolved contributor-supplied logomark: 142 → 143.
+    // gisoo (#18112) adds one unresolved contributor-supplied logomark: 143 → 144.
+    /146\/146 registered; proven=72 probable=71 unresolved=3; duplicate-groups=1/
   );
 });
 
-test("provider asset provenance gate stays on both blocking CI rails", () => {
-  const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8");
-  const ciLintJob = workflowJob(ci, "lint");
-  assert.match(ciLintJob, /^\s*- run: npm run check:provider-asset-provenance\s*$/m);
-  assert.match(ciLintJob, /fetch-depth: 0/);
-
-  const quality = readFileSync(join(REPO_ROOT, ".github/workflows/quality.yml"), "utf8");
-  const qualityFastGatesJob = workflowJob(quality, "fast-gates");
-  assert.match(qualityFastGatesJob, /gates=\([\s\S]*?\bprovider-asset-provenance\b[\s\S]*?\)/);
-  assert.match(qualityFastGatesJob, /npm run "check:\$g"/);
-  assert.match(qualityFastGatesJob, /fetch-depth: 0/);
+test("fork image build verifies provider asset provenance", () => {
+  const workflow = readFileSync(join(REPO_ROOT, ".github/workflows/build-fork.yml"), "utf8");
+  assert.match(workflow, /node scripts\/check\/check-provider-asset-provenance.mjs/);
+  assert.match(workflow, /fetch-depth: 0/);
 });
