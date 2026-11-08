@@ -843,3 +843,64 @@ html[dir="rtl"] :where(.react-flow) {
     display: none;
   }
 }
+
+/* LeonAPI fork: v3.8.52 colours on the current accessible component system.
+   Unlayered, root-specific overrides intentionally win over either stored kit palette. */
+html:root.ci-theme {
+  --ci-color-background: #f9f9fb;
+  --ci-color-canvas: #f9f9fb;
+  --ci-color-surface: #ffffff;
+  --ci-color-surface-subtle: #f0f0f5;
+  --ci-color-surface-muted: #f0f0f5;
+  --ci-color-foreground: #1a1a2e;
+  --ci-color-text: #1a1a2e;
+  --ci-color-heading: #1a1a2e;
+  --ci-color-text-muted: #71717a;
+  --ci-color-text-subtle: #71717a;
+  --ci-color-border: rgb(0 0 0 / 0.08);
+  --ci-color-border-subtle: rgb(0 0 0 / 0.04);
+  --ci-color-accent: #e54d5e;
+  --ci-color-accent-hover: #c93d4e;
+  --ci-color-accent-active: #c93d4e;
+  --ci-color-accent-foreground: #ffffff;
+  --ci-color-accent-ink: #b72c42;
+  --ci-color-accent-surface-subtle: rgb(229 77 94 / 0.08);
+  --ci-color-accent-surface-strong: rgb(229 77 94 / 0.16);
+  --ci-color-focus: #c93d4e;
+  --ci-color-selection: rgb(229 77 94 / 0.2);
+  --ci-sidebar-bg: #f5f5fa;
+  --ci-sidebar-active-bg: rgb(229 77 94 / 0.1);
+  --ci-sidebar-active-fg: #b72c42;
+  --color-sidebar: #f5f5fa;
+  --color-primary-ink: #b72c42;
+  --color-accent: #6366f1;
+  --color-accent-light: #a855f7;
+}
+html:root.ci-theme.dark {
+  --ci-color-background: #0b0e14;
+  --ci-color-canvas: #0b0e14;
+  --ci-color-surface: #161b22;
+  --ci-color-surface-subtle: #111520;
+  --ci-color-surface-muted: #111520;
+  --ci-color-foreground: #e6e6ef;
+  --ci-color-text: #e6e6ef;
+  --ci-color-heading: #e6e6ef;
+  --ci-color-text-muted: #a1a1aa;
+  --ci-color-text-subtle: #a1a1aa;
+  --ci-color-border: rgb(255 255 255 / 0.08);
+  --ci-color-border-subtle: rgb(255 255 255 / 0.04);
+  --ci-color-accent-ink: #e54d5e;
+  --ci-color-accent-surface-subtle: rgb(229 77 94 / 0.12);
+  --ci-sidebar-bg: #10141e;
+  --ci-sidebar-active-fg: #e54d5e;
+  --color-sidebar: #10141e;
+  --color-primary-ink: #e54d5e;
+}
+html.ci-theme .ci-sidebar,
+html.ci-theme .ci-sidebar-sheet {
+  background: var(--color-sidebar);
+}
+html.ci-theme .ci-sidebar__menu-button[data-active="true"] {
+  background: var(--ci-sidebar-active-bg);
+  color: var(--ci-sidebar-active-fg);
+}

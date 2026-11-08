@@ -8,11 +8,12 @@ const { default: OmniRouteLogo, OmniRouteLockup } =
 
 afterEach(() => cleanup());
 
-describe("brand wrappers → kit ProductIcon / ProductLockup", () => {
-  it("OmniRouteLogo keeps the size/className API and renders the kit product glyph", () => {
+describe("OmniRoute fork branding", () => {
+  it("OmniRouteLogo keeps the size/className API and renders the original hub glyph", () => {
     const { container } = render(<OmniRouteLogo size={22} className="x" />);
     const svg = container.querySelector("svg")!;
-    expect(svg.classList.contains("ci-keak-product-icon")).toBe(true);
+    expect(svg.getAttribute("viewBox")).toBe("0 0 32 32");
+    expect(svg.querySelectorAll("circle").length).toBe(7);
     expect(svg.classList.contains("x")).toBe(true);
     expect(svg.getAttribute("width")).toBe("22");
     // The kit rule `.ci-keak-product-icon { width: 2em; height: 2em }` (@layer components) beats
@@ -23,9 +24,9 @@ describe("brand wrappers → kit ProductIcon / ProductLockup", () => {
     expect(container.querySelector("image, [href^='/brand/']")).toBeNull();
   });
 
-  it("OmniRouteLockup renders the Keak OmniRoute lockup with one accessible name", () => {
+  it("OmniRouteLockup renders the OmniRoute lockup with one accessible name", () => {
     render(<OmniRouteLockup />);
-    expect(screen.getByRole("img", { name: "Keak OmniRoute" })).not.toBeNull();
+    expect(screen.getByRole("img", { name: "OmniRoute" })).not.toBeNull();
   });
 
   it("OmniRouteLockup honours white-label name/logo", () => {
