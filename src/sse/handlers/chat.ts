@@ -1157,6 +1157,7 @@ async function handleChatImplementation(
           connectionRestrictionSources: restrictions.sources,
           requireToolCalling: hasQoderCallerTools(body),
           sessionKey: sessionAffinityKey,
+          affinityReadOnly: true,
           preferredConnectionIds: apiKeyInfo?.preferredConnections ?? null,
           ...(target?.allowRateLimitedConnection ? { allowRateLimitedConnections: true } : {}),
           ...(target?.connectionId ? { forcedConnectionId: target.connectionId } : {}),
@@ -1185,6 +1186,7 @@ async function handleChatImplementation(
     const perRequestAutoControls = resolveRequestAutoControls(request.headers);
     const relayOptions = {
       sessionId,
+      sessionAffinityKey,
       ...(combo.strategy === "context-relay" ? { config: relayConfig } : {}),
       ...(bypassProviderQuotaPolicy ? { bypassProviderQuotaPolicy: true } : {}),
       ...perRequestAutoControls,

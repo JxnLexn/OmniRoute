@@ -101,6 +101,8 @@ export function modelAvailabilitySkipReason(
 }
 
 export type ComboRelayOptions = {
+  /** Same durable account-affinity key used by credential selection. */
+  sessionAffinityKey?: string | null;
   sessionId?: string | null;
   config?: Record<string, unknown> | null;
   bypassProviderQuotaPolicy?: boolean;

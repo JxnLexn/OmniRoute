@@ -1797,11 +1797,14 @@ export async function getProviderCredentials(
             provider,
             options.sessionKey,
             orderedConnections,
-            sessionAffinityTtlMs
+            sessionAffinityTtlMs,
+            undefined,
+            options.affinityReadOnly === true
           );
     if (affinityConnection) {
       connection = affinityConnection;
-      if (options.lease) commitSelectionSideEffects = affinityPlan?.commit;
+      if (options.lease && !options.affinityReadOnly)
+        commitSelectionSideEffects = affinityPlan?.commit;
       else syncSessionAffinityRuntimeFields(connectionsRaw, connection);
     } else if (options.sessionKey) {
       log.info(
