@@ -32,7 +32,10 @@ import {
 import KiloPassMeter from "./KiloPassMeter";
 import QuotaCardSpeed from "./QuotaCardSpeed";
 import { hasCodexPaidCredits, type CodexPaidCredits } from "@/lib/providers/codexPaidCredits";
-import AntigravityQuotaGroups, { resolveAntigravityQuotaGroups } from "../AntigravityQuotaGroups";
+import AntigravityQuotaGroups, {
+  antigravityGroupVisibilityRow,
+  resolveAntigravityQuotaGroups,
+} from "../AntigravityQuotaGroups";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -400,7 +403,14 @@ export default function QuotaCardExpanded({
         </div>
       ) : (providerId === "antigravity" || providerId === "agy") &&
         resolvedAntigravityGroups.length > 0 ? (
-        <AntigravityQuotaGroups groups={resolvedAntigravityGroups} />
+        <AntigravityQuotaGroups
+          groups={resolvedAntigravityGroups}
+          hiddenKeys={hiddenQuotaRows.map(getQuotaVisibilityKey)}
+          hideLabel={tr("hideQuotaRow", "Hide this quota row")}
+          onHideGroup={
+            onHideQuota ? (group) => onHideQuota(antigravityGroupVisibilityRow(group)) : undefined
+          }
+        />
       ) : quotas.length === 0 && message ? (
         <div className="text-[11px] text-text-muted italic" title={message}>
           {message}

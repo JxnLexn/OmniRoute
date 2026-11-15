@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { formatCountdown, getBarColor } from "./utils";
+import { formatCountdown, getBarColor, getQuotaVisibilityKey } from "./utils";
+import { getAntigravityQuotaFamily } from "@omniroute/open-sse/services/antigravityQuotaFamily";
 import Button from "@/shared/components/Button";
+import Icon from "@/shared/components/Icon";
 
 export type QuotaWindow = {
   remainingPercentage?: number;
@@ -151,12 +153,53 @@ function QuotaWindowRow({ label, window }: { label: string; window?: QuotaWindow
   );
 }
 
-export default function AntigravityQuotaGroups({ groups }: { groups: QuotaGroup[] }) {
+/** Display-only identity, independent of model names and translated group labels. */
+export function antigravityGroupVisibilityRow(group: QuotaGroup) {
+  return {
+    modelKey: `quota-group:${group.id}`,
+    name: group.displayName,
+    displayName: group.displayName,
+  };
+}
+
+/** Match only presentation rows; never change the provider's quota enforcement. */
+export function antigravityQuotaBelongsToGroup(
+  quota: { modelKey?: string; name?: string },
+  group: QuotaGroup
+): boolean {
+  const key = getQuotaVisibilityKey(quota);
+  if (
+    group.models?.includes(key) ||
+    key === `${group.id}_session` ||
+    key === `${group.id}_weekly`
+  ) {
+    return true;
+  }
+  const families: Record<string, string> = {
+    gemini: "gemini",
+    claude_gpt: "claude",
+    gemini_4_argon: "argon",
+  };
+  return families[group.id] === getAntigravityQuotaFamily(key);
+}
+
+export default function AntigravityQuotaGroups({
+  groups,
+  hiddenKeys = [],
+  onHideGroup,
+  hideLabel = "Hide this quota row",
+}: {
+  groups: QuotaGroup[];
+  hiddenKeys?: string[];
+  onHideGroup?: (group: QuotaGroup) => void;
+  hideLabel?: string;
+}) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   return (
     <div className="flex flex-col gap-3">
       {groups.map((group) => {
+        if (hiddenKeys.includes(antigravityGroupVisibilityRow(group).modelKey)) return null;
         const models = group.models || [];
         const expanded = expandedGroups[group.id] === true;
         const visibleModels = expanded ? models : models.slice(0, 4);
@@ -165,7 +208,23 @@ export default function AntigravityQuotaGroups({ groups }: { groups: QuotaGroup[
             key={group.id}
             className="rounded-md border border-border/60 bg-bg-subtle/40 p-2"
           >
-            <h4 className="mb-2 text-xs font-semibold text-text-main">{group.displayName}</h4>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h4 className="text-xs font-semibold text-text-main">{group.displayName}</h4>
+              {onHideGroup && (
+                <button
+                  type="button"
+                  className="text-text-muted hover:text-text-main"
+                  title={`${hideLabel}: ${group.displayName}`}
+                  aria-label={`${hideLabel}: ${group.displayName}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onHideGroup(group);
+                  }}
+                >
+                  <Icon name="visibility_off" size={16} />
+                </button>
+              )}
+            </div>
             <div className="flex flex-col gap-2">
               <QuotaWindowRow label="5 hour" window={group.windows?.session} />
               <QuotaWindowRow label="Weekly" window={group.windows?.weekly} />
