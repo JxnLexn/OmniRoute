@@ -1,3 +1,4 @@
+import { preferSessionAccountTarget } from "./sessionAccountContinuity.ts";
 /**
  * resolveComboTargetPipeline — the target-resolution phase of handleComboChat (combo.ts).
  *
@@ -933,6 +934,11 @@ export async function resolveComboTargetPipeline(
       orderedTargets,
       parseAutoConfig(combo, orderedTargets).accountPreferences,
       continuity.sticky.stuck
+    );
+    orderedTargets = await preferSessionAccountTarget(
+      orderedTargets,
+      deps.relayOptions?.sessionAffinityKey,
+      settings
     );
   }
 
