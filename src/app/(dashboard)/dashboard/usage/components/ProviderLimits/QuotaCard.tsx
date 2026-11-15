@@ -26,6 +26,7 @@ import ProviderUsdCostModal from "./ProviderUsdCostModal";
 import type { CodexPaidCredits } from "@/lib/providers/codexPaidCredits";
 import {
   antigravityGroupVisibilityRow,
+  antigravityQuotaBelongsToGroup,
   resolveAntigravityQuotaGroups,
 } from "./AntigravityQuotaGroups";
 
@@ -114,7 +115,21 @@ export default function QuotaCard({
         : [];
     return getHiddenQuotaRows(visibilityScope, [...rawQuotas, ...groupRows], quotaVisibility);
   }, [visibilityScope, rawQuotas, quotaVisibility, connection.provider, quota?.raw?.quotaGroups]);
-  const cardStatus = useMemo<CardStatus>(() => worstStatus(quotas), [quotas]);
+  const cardStatus = useMemo<CardStatus>(() => {
+    if (connection.provider !== "antigravity" && connection.provider !== "agy")
+      return worstStatus(quotas);
+    const hiddenGroups = resolveAntigravityQuotaGroups(quota?.raw?.quotaGroups, rawQuotas).filter(
+      (group) =>
+        hiddenQuotaRows.some(
+          (row) => row.modelKey === antigravityGroupVisibilityRow(group).modelKey
+        )
+    );
+    return worstStatus(
+      quotas.filter(
+        (row) => !hiddenGroups.some((group) => antigravityQuotaBelongsToGroup(row, group))
+      )
+    );
+  }, [quotas, hiddenQuotaRows, connection.provider, quota?.raw?.quotaGroups, rawQuotas]);
   const tierMeta = useMemo(
     () =>
       normalizePlanTier(
