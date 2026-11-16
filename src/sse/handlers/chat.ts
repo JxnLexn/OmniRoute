@@ -1118,7 +1118,7 @@ async function handleChatImplementation(
       // target specifies providerId: "opengate" for credential lookup).
       let modelInfo;
       try {
-        modelInfo = await getModelInfo(modelString);
+        modelInfo = await getModelInfo(modelString, body);
       } catch (error) {
         // Persisted explicit combos may still reference the retired provider. Treat
         // that target as unavailable so priority/fallback strategies can continue.
@@ -1127,7 +1127,11 @@ async function handleChatImplementation(
         if (isCommonChatGptWebRetirementError(error)) return false;
         throw error;
       }
-      if (modelInfo?.errorType === "model_not_found") return "model_not_in_catalog";
+      if (
+        modelInfo?.errorType === "model_not_found" ||
+        modelInfo?.errorType === "invalid_reasoning_effort"
+      )
+        return "model_not_in_catalog";
       const provider = comboCheckProvider(modelString, modelInfo, target?.providerId);
       const resolvedModel = modelInfo.model || modelString;
       const githubGate = await ghComboGate(comboPreselectedCredentials, provider, resolvedModel);
@@ -1155,6 +1159,7 @@ async function handleChatImplementation(
         resolvedModel,
         {
           connectionRestrictionSources: restrictions.sources,
+          requireNativeReasoningCatalog: modelInfo.requireNativeReasoningCatalog === true,
           requireToolCalling: hasQoderCallerTools(body),
           sessionKey: sessionAffinityKey,
           affinityReadOnly: true,
@@ -1809,6 +1814,8 @@ async function handleSingleModelChat(
           model,
           {
             connectionRestrictionSources: restrictions.sources,
+            requireNativeReasoningCatalog:
+              resolved.modelInfo.requireNativeReasoningCatalog === true,
             requireToolCalling: hasQoderCallerTools(body),
             sessionKey: museOwner ? null : occupancySessionKey,
             preferredConnectionIds: apiKeyInfo?.preferredConnections ?? null,
