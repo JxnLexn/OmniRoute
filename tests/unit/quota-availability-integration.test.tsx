@@ -1,7 +1,7 @@
 import React from "react";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import en from "../../src/i18n/messages/en.json";
 import zh from "../../src/i18n/messages/zh-CN.json";
@@ -249,14 +249,11 @@ it.each([false, true])(
 it("shows Kimi in the provider filter while preserving the moonshot filter value", async () => {
   fixture(false, false, ["moonshot", "kimi-coding"]);
   mount("en");
-  const select = await screen.findByRole("combobox", { name: "Filter quota providers" });
-  expect(within(select).getByRole("option", { name: "Kimi", exact: true })).toHaveValue("moonshot");
-  expect(within(select).getByRole("option", { name: "Kimi Coding", exact: true })).toHaveValue(
-    "kimi-coding"
-  );
-
-  fireEvent.change(select, { target: { value: "moonshot" } });
+  fireEvent.click(await screen.findByLabelText("Filter quota providers", { selector: "summary" }));
+  const kimi = screen.getByRole("checkbox", { name: "Kimi", exact: true });
+  expect(screen.getByRole("checkbox", { name: "Kimi Coding", exact: true })).toBeDefined();
+  fireEvent.click(kimi);
   await waitFor(() => expect(document.querySelectorAll("[data-account]")).toHaveLength(1));
-  expect(select).toHaveValue("moonshot");
+  expect(kimi).toBeChecked();
   expect(document.querySelector("[data-account]")).toHaveAttribute("data-account", "available");
 });

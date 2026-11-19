@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 
 const { default: LoginPage } = await import("../../../src/app/login/page");
 
-const LOGO_NAME = "Keak OmniRoute";
+const LOGO_NAME = "OmniRoute";
 
 function installFetch(state: { hasPassword: boolean; setupComplete: boolean }) {
   vi.stubGlobal(

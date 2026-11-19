@@ -79,7 +79,13 @@ describe("ProviderDetailPageClient (Phase 0 smoke)", () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
-    fetchMock.mockImplementation(() => Promise.resolve(emptyJsonResponse()));
+    fetchMock.mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(
+        getRequestPath(input).startsWith("/api/usage/openai-costs?")
+          ? Response.json({ organizations: [] })
+          : emptyJsonResponse()
+      )
+    );
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;

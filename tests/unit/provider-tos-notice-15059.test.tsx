@@ -84,6 +84,8 @@ describe("#15059 provider connection notice", () => {
       if (init?.method && init.method !== "GET") {
         throw new Error("Connection notice must not change settings or start authentication");
       }
+      if (String(_input).startsWith("/api/usage/openai-costs?"))
+        return Response.json({ organizations: [] });
       return Response.json({ connections: [], nodes: [], models: [], settings: {} });
     });
     container = document.createElement("div");

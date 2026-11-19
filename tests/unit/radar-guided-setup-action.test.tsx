@@ -70,7 +70,13 @@ function setInputValue(input: HTMLInputElement, value: string): void {
 }
 
 describe("Radar guided setup provider action", () => {
-  const fetchMock = vi.fn(() => Promise.resolve(response()));
+  const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) =>
+    Promise.resolve(
+      String(input).startsWith("/api/usage/openai-costs?")
+        ? response({ organizations: [] })
+        : response()
+    )
+  );
 
   beforeEach(() => {
     providerId = "openai";
