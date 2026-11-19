@@ -22,6 +22,7 @@ import {
 } from "./utils";
 import QuotaCardHeader from "./parts/QuotaCardHeader";
 import QuotaCardExpanded from "./parts/QuotaCardExpanded";
+import { useQuotaClock } from "./useQuotaClock";
 import ProviderUsdCostModal from "./ProviderUsdCostModal";
 import type { CodexPaidCredits } from "@/lib/providers/codexPaidCredits";
 import {
@@ -53,6 +54,7 @@ interface QuotaCardProps {
           quotaGroups?: Array<Record<string, unknown>>;
           paidCredits?: CodexPaidCredits;
           speed?: unknown;
+          modelUsage?: unknown;
         };
         stale?: { since?: string; reason?: string } | null;
       }
@@ -95,6 +97,7 @@ export default function QuotaCard({
   onShowQuota,
 }: QuotaCardProps) {
   const isActive = connection.isActive ?? true;
+  const clockNow = useQuotaClock();
   const [costModalOpen, setCostModalOpen] = useState(false);
   const rawQuotas = quota?.quotas ?? EMPTY_QUOTAS;
   // Per-account visibility (9router#4767); provider entry is a legacy fallback.
@@ -189,6 +192,7 @@ export default function QuotaCard({
         onToggleActive={onToggleActive}
         togglingActive={togglingActive}
         onTestSent={onRefresh}
+        now={clockNow}
       />
       {connection.provider === "chatgpt" && (
         <ChatGptLocalUsage
@@ -202,6 +206,8 @@ export default function QuotaCard({
           quotaGroups={quota?.raw?.quotaGroups}
           paidCredits={connection.provider === "codex" ? quota?.raw?.paidCredits : undefined}
           speed={quota?.raw?.speed}
+          now={clockNow}
+          cursorModelUsage={connection.provider === "cursor" ? quota?.raw?.modelUsage : undefined}
           providerId={connection.provider}
           loading={loading}
           error={error}

@@ -526,7 +526,7 @@ test("provider asset provenance gate binds auditedCommit to the physical provide
   }
 });
 
-test("repository provider asset manifest covers the audited 146-file fork snapshot", (t) => {
+test("repository provider asset manifest covers the audited 146-file snapshot", (t) => {
   const manifestPath = join(REPO_ROOT, "config/quality/provider-assets-provenance.jsonl");
   const { auditedCommit } = JSON.parse(readFileSync(manifestPath, "utf8").split("\n")[0]);
   if (!gitHasCommit(auditedCommit) && isShallowRepository()) {
@@ -543,6 +543,7 @@ test("repository provider asset manifest covers the audited 146-file fork snapsh
     result.stdout,
     // runcrate (#18061) adds one unresolved contributor-supplied logomark: 142 → 143.
     // gisoo (#18112) adds one unresolved contributor-supplied logomark: 143 → 144.
+    // ChatGPT sign-in (#15201) adds two probable official SIWC logomarks: 144 → 146.
     /146\/146 registered; proven=72 probable=71 unresolved=3; duplicate-groups=1/
   );
 });

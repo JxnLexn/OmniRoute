@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { parseChatGptManualCallback } from "@/shared/utils/chatgptCallback";
+import { Alert } from "@omniroute/ui-kit/alert";
 import Modal from "./Modal";
 import Button from "./Button";
+import Textarea from "./Textarea";
 import ChatGptSignInButton from "./ChatGptSignInButton";
 import { ChatGptPlanWelcome } from "./ChatGptPlanUi";
 import { acknowledgeChatGptPlan, shouldWelcomeChatGptPlan } from "@/shared/utils/chatgptPlanUi";
@@ -12,16 +15,16 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  reauthConnection?: { id: string } | null;
+  reauthConnection?: null | { id?: string };
 };
-async function session(body: Record<string, unknown>) {
+async function session(body: Record<string, unknown>, fallback = "") {
   const response = await fetch("/api/oauth/chatgpt/session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message || "Unable to connect to OmniRoute.");
+  if (!response.ok) throw new Error(result.error?.message || fallback);
   return result;
 }
 
@@ -30,17 +33,16 @@ export default function ChatGptOAuthModal(props: Props) {
   return props.isOpen ? <ChatGptOAuthDialog {...props} /> : null;
 }
 
-function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Props) {
+type Translator = ReturnType<typeof useTranslations>;
+type ChatGptAttemptView = { state: string; authUrl: string };
+
+/** Server-side attempt lifecycle: start (cancelling any previous attempt), and cancel on unmount. */
+function useChatGptAttempt(connectionId: string | undefined, t: Translator) {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
-  const [warning, setWarning] = useState("");
-  const [callbackUrl, setCallbackUrl] = useState("");
-  const [attempt, setAttempt] = useState<{ state: string; authUrl: string } | null>(null);
+  const [attempt, setAttempt] = useState<ChatGptAttemptView | null>(null);
   const stateRef = useRef<string | null>(null);
   const generation = useRef(0);
-  const [done, setDone] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(false);
-  const connectionId = reauthConnection?.id;
 
   const start = useCallback(async () => {
     const current = ++generation.current;
@@ -48,7 +50,10 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
       if (stateRef.current) await session({ action: "cancel", state: stateRef.current });
       if (current !== generation.current) return;
       stateRef.current = null;
-      const result = await session({ action: "start", port: 1455, connectionId });
+      const result = await session(
+        { action: "start", port: 1455, connectionId },
+        t("connectionError")
+      );
       if (current !== generation.current) {
         void session({ action: "cancel", state: result.state }).catch(() => {});
         return;
@@ -57,11 +62,11 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
       setAttempt(result);
     } catch (err) {
       if (current === generation.current)
-        setError(err instanceof Error ? err.message : "Sign-in could not be started.");
+        setError(err instanceof Error && err.message ? err.message : t("startError"));
     } finally {
       if (current === generation.current) setBusy(false);
     }
-  }, [connectionId]);
+  }, [connectionId, t]);
 
   useEffect(() => {
     const lifecycle = generation;
@@ -76,13 +81,138 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
     };
   }, [start]);
 
+  return { busy, setBusy, error, setError, attempt, setAttempt, stateRef, generation, start };
+}
+
+function ChatGptSignInDone({
+  warning,
+  showWelcome,
+  onFinish,
+  t,
+}: {
+  warning: string;
+  showWelcome: boolean;
+  onFinish: () => void;
+  t: Translator;
+}) {
+  return (
+    <div className="space-y-4">
+      <p role="status">{t("connected")}</p>
+      {/* role="note": the connected line above is the dialog's one live status. */}
+      {warning && <Alert variant="warning" role="note" dismissible={false} description={warning} />}
+      {showWelcome ? (
+        <ChatGptPlanWelcome onDismiss={onFinish} />
+      ) : (
+        <Button onClick={onFinish}>{t("done")}</Button>
+      )}
+    </div>
+  );
+}
+
+function ChatGptSignInStep({
+  attempt,
+  busy,
+  isReauth,
+  t,
+}: {
+  attempt: ChatGptAttemptView | null;
+  busy: boolean;
+  isReauth: boolean;
+  t: Translator;
+}) {
+  const intent = isReauth ? "continue" : "signin";
+  return (
+    <section className="space-y-3">
+      <h3>{t("signInStep")}</h3>
+      <p className="text-sm text-text-muted">{t("signInHelp")}</p>
+      {attempt ? (
+        <ChatGptSignInButton intent={intent} href={attempt.authUrl} />
+      ) : (
+        <ChatGptSignInButton intent={intent} busy={busy} disabled />
+      )}
+    </section>
+  );
+}
+
+function ChatGptCallbackStep({
+  attempt,
+  busy,
+  callbackUrl,
+  onCallbackUrlChange,
+  onSubmit,
+  onStartOver,
+  t,
+}: {
+  attempt: ChatGptAttemptView | null;
+  busy: boolean;
+  callbackUrl: string;
+  onCallbackUrlChange: (value: string) => void;
+  onSubmit: () => void;
+  onStartOver: () => void;
+  t: Translator;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3>{t("callbackStep")}</h3>
+      <p id="chatgpt-callback-help" className="text-sm text-text-muted">
+        {t("callbackHelp", { redirectUri })}
+      </p>
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Textarea
+          label={t("callbackLabel")}
+          className="w-full font-mono text-sm"
+          value={callbackUrl}
+          onChange={(event) => onCallbackUrlChange(event.target.value)}
+          placeholder={redirectUri + "?code=…&state=…&client_id=…"}
+          aria-describedby="chatgpt-callback-help"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          maxLength={16384}
+          rows={4}
+          disabled={!attempt || busy}
+        />
+        <Button
+          type="submit"
+          disabled={!attempt || busy || !callbackUrl.trim()}
+          loading={busy && !!attempt}
+        >
+          {t("complete")}
+        </Button>
+      </form>
+      <p className="text-sm text-text-muted">{t("expires")}</p>
+      <Button variant="secondary" disabled={busy} onClick={onStartOver}>
+        {t("startOver")}
+      </Button>
+    </section>
+  );
+}
+
+/** Validates the pasted callback locally, then completes the attempt server-side. */
+function useChatGptCompletion(
+  lifecycle: ReturnType<typeof useChatGptAttempt>,
+  connectionId: string | undefined,
+  t: Translator
+) {
+  const { busy, setBusy, setError, attempt, stateRef, generation } = lifecycle;
+  const [warning, setWarning] = useState("");
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [done, setDone] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+
   async function complete() {
     if (!attempt || busy) return;
     setError("");
     try {
       parseChatGptManualCallback(callbackUrl, { redirectUri, state: attempt.state });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid callback URL.");
+    } catch {
+      setError(t("callbackError"));
       return;
     }
     setBusy(true);
@@ -103,129 +233,62 @@ function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Pr
       setWarning(result.warning || "");
     } catch (err) {
       if (current === generation.current)
-        setError(err instanceof Error ? err.message : "Sign-in could not be completed.");
+        setError(err instanceof Error && err.message ? err.message : t("completeError"));
     } finally {
       if (current === generation.current) setBusy(false);
     }
   }
+
+  return { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete };
+}
+
+function ChatGptOAuthDialog({ isOpen, onClose, onSuccess, reauthConnection }: Props) {
+  const t = useTranslations("chatgptSignIn");
+  const connectionId = reauthConnection?.id;
+  const lifecycle = useChatGptAttempt(connectionId, t);
+  const { busy, setBusy, error, setError, attempt, setAttempt, start } = lifecycle;
+  const { warning, callbackUrl, setCallbackUrl, done, showWelcome, complete } =
+    useChatGptCompletion(lifecycle, connectionId, t);
 
   function finish() {
     if (showWelcome) acknowledgeChatGptPlan();
     onSuccess();
   }
 
+  function startOver() {
+    setBusy(true);
+    setError("");
+    setCallbackUrl("");
+    setAttempt(null);
+    void start();
+  }
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={done ? finish : onClose}
-      title="Connect ChatGPT"
+      title={t("title")}
       size="full"
       className="max-h-[90vh] overflow-y-auto"
     >
       <div className="space-y-6">
-        {!done && (
-          <>
-            <p className="text-text-muted">
-              Official Sign in with ChatGPT · Preview. Uses your ChatGPT plan through the public
-              OpenAI API. This is separate from the Codex provider and does not grant access to your
-              chats.
-            </p>
-            <p className="rounded-lg border border-border p-3 text-sm">
-              For your personal, self-hosted instance. OpenAI eligibility and app-specific usage
-              limits apply. Shared or commercial services may require separate approval.
-            </p>
-          </>
-        )}
         {done ? (
-          <div className="space-y-4">
-            <p role="status">ChatGPT is connected.</p>
-            {warning && <p className="rounded-lg border border-amber-500 p-3">{warning}</p>}
-            {showWelcome ? (
-              <ChatGptPlanWelcome onDismiss={finish} />
-            ) : (
-              <Button onClick={finish}>Done</Button>
-            )}
-          </div>
+          <ChatGptSignInDone warning={warning} showWelcome={showWelcome} onFinish={finish} t={t} />
         ) : (
           <>
-            <section className="space-y-3">
-              <h3 className="font-semibold">1. Sign in with ChatGPT</h3>
-              <p className="text-sm text-text-muted">
-                Open the sign-in page in a new tab and allow ChatGPT plan usage. Keep this dialog
-                open.
-              </p>
-              {attempt ? (
-                <ChatGptSignInButton
-                  intent={connectionId ? "continue" : "signin"}
-                  href={attempt.authUrl}
-                />
-              ) : (
-                <ChatGptSignInButton
-                  intent={connectionId ? "continue" : "signin"}
-                  busy={busy}
-                  disabled
-                />
-              )}
-            </section>
-            <section className="space-y-3">
-              <h3 className="font-semibold">2. Copy the callback URL</h3>
-              <p id="chatgpt-callback-help" className="text-sm text-text-muted">
-                After signing in, your browser redirects to <code>{redirectUri}</code>. A “can’t
-                connect” page is expected: copy the complete URL from the address bar, including
-                everything after the question mark, and paste it below. No helper, SSH tunnel or
-                open server port is needed. Do not share this one-time URL.
-              </p>
-              <form
-                className="space-y-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void complete();
-                }}
-              >
-                <label className="block space-y-2">
-                  <span>Callback URL</span>
-                  <textarea
-                    className="w-full rounded-lg border border-border bg-bg-input p-3 font-mono text-sm"
-                    value={callbackUrl}
-                    onChange={(event) => setCallbackUrl(event.target.value)}
-                    placeholder={redirectUri + "?code=…&state=…&client_id=…"}
-                    aria-describedby="chatgpt-callback-help"
-                    autoComplete="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                    maxLength={16384}
-                    rows={4}
-                    disabled={!attempt || busy}
-                  />
-                </label>
-                <Button
-                  type="submit"
-                  disabled={!attempt || busy || !callbackUrl.trim()}
-                  loading={busy && !!attempt}
-                >
-                  Complete sign-in
-                </Button>
-              </form>
-              <p className="text-sm text-text-muted">This attempt expires after 10 minutes.</p>
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => {
-                  setBusy(true);
-                  setError("");
-                  setCallbackUrl("");
-                  setAttempt(null);
-                  void start();
-                }}
-              >
-                Start over
-              </Button>
-            </section>
-            {error && (
-              <p role="alert" className="rounded-lg border border-red-500 p-3 text-red-400">
-                {error}
-              </p>
-            )}
+            <p className="text-text-muted">{t("description")}</p>
+            <p className="rounded-lg border border-border p-3 text-sm">{t("eligibility")}</p>
+            <ChatGptSignInStep attempt={attempt} busy={busy} isReauth={!!connectionId} t={t} />
+            <ChatGptCallbackStep
+              attempt={attempt}
+              busy={busy}
+              callbackUrl={callbackUrl}
+              onCallbackUrlChange={setCallbackUrl}
+              onSubmit={() => void complete()}
+              onStartOver={startOver}
+              t={t}
+            />
+            {error && <Alert variant="critical" dismissible={false} description={error} />}
           </>
         )}
       </div>

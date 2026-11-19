@@ -1,5 +1,15 @@
 {
-  "root": ["auth", "common", "docs", "endpoint", "header", "landing", "miniapp", "publicSystem"],
+  "root": [
+    "auth",
+    "chatgptSignIn",
+    "common",
+    "docs",
+    "endpoint",
+    "header",
+    "landing",
+    "miniapp",
+    "publicSystem"
+  ],
   "chrome": [
     "agentSkills",
     "analytics",
@@ -1390,6 +1400,7 @@
       "analytics",
       "breadcrumbs",
       "cache",
+      "chatgptSignIn",
       "cliproxyHealth",
       "cliproxyProviderExposure",
       "cloudSyncStatus",
@@ -1400,6 +1411,7 @@
       "cursorAuthModal",
       "darioPanel",
       "embeddedServices",
+      "falNative",
       "header",
       "kiroAuthModal",
       "kiroSocialOAuthModal",
@@ -1407,7 +1419,7 @@
       "miniPlayground",
       "noAuthProvider",
       "oauthModal",
-      "openaiBilling",
+      "playground",
       "providerTest",
       "providers",
       "proxyConfigModal",
@@ -1422,7 +1434,8 @@
       "stats",
       "teamCosts",
       "traeAuthModal",
-      "trafficInspector"
+      "trafficInspector",
+      "openaiBilling"
     ],
     "quota": [
       "agentSkills",

@@ -16,3 +16,20 @@ export function getChatGptHostId(): string {
     return JSON.parse(row.value) as string;
   })();
 }
+
+type ConnectionRow = Record<string, unknown>;
+
+/** SIWC registrations are distinct even when their verified email is identical. */
+export function findChatGptConnectionByRegistration(
+  providerSpecificData: Record<string, unknown>
+): ConnectionRow | null {
+  const { issuer, subject, clientId } = providerSpecificData;
+  if (!issuer || !subject || !clientId) throw new Error("Missing ChatGPT registration identity");
+  return (
+    (getDbInstance()
+      .prepare(
+        "SELECT * FROM provider_connections WHERE provider = 'chatgpt' AND json_extract(provider_specific_data, '$.issuer') = ? AND json_extract(provider_specific_data, '$.subject') = ? AND json_extract(provider_specific_data, '$.clientId') = ?"
+      )
+      .get(issuer, subject, clientId) as ConnectionRow | undefined) || null
+  );
+}

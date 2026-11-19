@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { z } from "zod";
 import {
@@ -8,6 +8,7 @@ import {
   CHATGPT_TOKEN_URL,
 } from "@omniroute/open-sse/config/chatgpt";
 import { resolvePublicCred } from "@omniroute/open-sse/utils/publicCreds";
+import { generateCodeChallenge } from "./utils/pkce";
 
 export const chatGptTokensSchema = z.object({
   access_token: z.string().min(1),
@@ -30,6 +31,7 @@ export type ChatGptAttempt = {
   origin: string;
   expiresAt: number;
 };
+// Official OpenAI JWKS, derived from the pinned issuer constant — never from token or request data.
 const jwks = createRemoteJWKSet(new URL(`${CHATGPT_ISSUER}/.well-known/jwks.json`));
 
 export function createChatGptAttempt(
@@ -60,7 +62,7 @@ export function createChatGptAttempt(
     state: attempt.state,
     nonce: attempt.nonce,
     code_challenge_method: "S256",
-    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge: generateCodeChallenge(verifier),
   }).toString();
   return { attempt, authUrl: url.toString() };
 }
@@ -83,6 +85,9 @@ export async function verifyChatGptIdentity(
   const { payload } = await jwtVerify(idToken, key, {
     issuer: CHATGPT_ISSUER,
     audience: clientId,
+    // Pinned: OpenAI signs ID tokens with RS256; accepting whatever the header asks for
+    // (HS256 with the public key, `none`) is how algorithm-substitution attacks get in.
+    algorithms: ["RS256"],
     requiredClaims: ["sub", "exp", "iat", "nonce"],
   });
   if (payload.nonce !== nonce || !payload.sub)

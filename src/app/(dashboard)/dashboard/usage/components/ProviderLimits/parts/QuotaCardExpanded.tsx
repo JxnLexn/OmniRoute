@@ -36,6 +36,7 @@ import AntigravityQuotaGroups, {
   antigravityGroupVisibilityRow,
   resolveAntigravityQuotaGroups,
 } from "../AntigravityQuotaGroups";
+import CursorModelUsageTable from "../CursorModelUsageTable";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -169,6 +170,10 @@ interface Props {
   onShowQuota?: (quota: any) => void;
   /** Read-time decode-speed stats from the usage API (`speed` payload). */
   speed?: unknown;
+  /** Shared card clock (epoch ms) driving every "Resets in" countdown. */
+  now?: number;
+  /** Cursor only: per-model tokens + billed cost rows (`raw.modelUsage`); absent → no table. */
+  cursorModelUsage?: unknown;
 }
 
 function QuotaDetailRow({
@@ -177,6 +182,7 @@ function QuotaDetailRow({
   onHideQuota,
   onOpenResetCredits,
   loadingResetCredits = false,
+  now,
 }: {
   q: any;
   /** Collapsed Kilo Pass display row; present only on kilocode provider cards. */
@@ -184,6 +190,8 @@ function QuotaDetailRow({
   onHideQuota?: (quota: any) => void;
   onOpenResetCredits?: () => void;
   loadingResetCredits?: boolean;
+  /** Shared card clock (epoch ms) so the countdown recomputes on ticks and refreshes. */
+  now?: number;
 }) {
   const t = useTranslations("usage");
   const canHide = typeof onHideQuota === "function" && !q.isCredits && !q.isResetCredits;
@@ -225,7 +233,7 @@ function QuotaDetailRow({
             onOpenResetCredits?.();
           }}
           aria-label={translateUsageOrFallback(t, "viewResetCredits", "View reset credits")}
-          className="h-6 min-h-6 shrink-0 gap-1 px-1.5 text-[12px] font-bold leading-none tabular-nums"
+          className="h-6 min-h-6 shrink-0 gap-1 px-1.5 text-[12px] leading-none tabular-nums"
           style={{ color: colors.text }}
         >
           {loadingResetCredits && <Spinner decorative size="xs" />}
@@ -256,7 +264,7 @@ function QuotaDetailRow({
           </span>
         </span>
         <span
-          className="inline-flex h-6 shrink-0 items-center text-[12px] font-bold leading-none tabular-nums"
+          className="inline-flex h-6 shrink-0 items-center text-[12px] font-semibold leading-none tabular-nums"
           style={{ color: colors.text }}
         >
           {sym}
@@ -269,7 +277,7 @@ function QuotaDetailRow({
   const pctRaw = getQuotaRemainingPercentage(q);
   const pct = Math.round(pctRaw);
   const colors = getBarColor(pct);
-  const cd = formatCountdown(q.resetAt);
+  const cd = formatCountdown(q.resetAt, now);
   const label = q.displayName || formatQuotaLabel(q.name);
   const usedNum = Number(q.used || 0);
   const totalNum = Number(q.total || 0);
@@ -280,7 +288,7 @@ function QuotaDetailRow({
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] font-medium text-text-main truncate">{label}</span>
         <span
-          className="text-[12px] font-bold tabular-nums shrink-0"
+          className="text-[12px] font-semibold tabular-nums shrink-0"
           style={{ color: colors.text }}
         >
           {q.unlimited ? "∞" : translateUsageOrFallback(t, "percentLeft", `${pct}% left`, { pct })}
@@ -301,7 +309,7 @@ function QuotaDetailRow({
           </Button>
         )}
       </div>
-      {!q.unlimited && <QuotaMiniBar percent={pct} size="sm" />}
+      {!q.unlimited && <QuotaMiniBar percent={pct} label={label} size="sm" />}
       <div className="flex items-center justify-between gap-2 text-[10px] text-text-muted tabular-nums">
         <span>
           {showUsage ? (
@@ -353,6 +361,8 @@ export default function QuotaCardExpanded({
   onHideQuota,
   onShowQuota,
   speed,
+  cursorModelUsage,
+  now,
 }: Props) {
   const t = useTranslations("usage");
   const tr = (key: string, fallback: string, values?: UsageTranslationValues) =>
@@ -405,6 +415,7 @@ export default function QuotaCardExpanded({
         resolvedAntigravityGroups.length > 0 ? (
         <AntigravityQuotaGroups
           groups={resolvedAntigravityGroups}
+          now={now}
           hiddenKeys={hiddenQuotaRows.map(getQuotaVisibilityKey)}
           hideLabel={tr("hideQuotaRow", "Hide this quota row")}
           onHideGroup={
@@ -427,6 +438,7 @@ export default function QuotaCardExpanded({
               onHideQuota={onHideQuota}
               onOpenResetCredits={q.isResetCredits ? onOpenResetCredits : undefined}
               loadingResetCredits={loadingResetCredits}
+              now={now}
             />
           ))}
         </div>
@@ -450,6 +462,8 @@ export default function QuotaCardExpanded({
         </div>
       )}
 
+      {providerId === "cursor" && !error && <CursorModelUsageTable rows={cursorModelUsage} />}
+
       {!error && <QuotaCardSpeed speed={speed} />}
 
       {hiddenQuotaRows.length > 0 && (
@@ -465,7 +479,7 @@ export default function QuotaCardExpanded({
                 e.stopPropagation();
                 onShowQuota?.(q);
               }}
-              className="h-auto min-h-0 px-1.5 py-0.5 text-[10px] font-normal"
+              className="h-auto min-h-0 px-1.5 py-0.5 text-[10px]"
               title={translateUsageOrFallback(t, "showQuotaRow", "Show this quota row")}
             >
               {q.displayName || formatQuotaLabel(q.name)}
@@ -493,10 +507,10 @@ export default function QuotaCardExpanded({
       )}
 
       <div className="min-w-0 space-y-1.5 pt-1.5 border-t border-border/40">
-        <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center justify-end gap-2">
           {refreshedLabel && (
             <span
-              className={`text-[10px] tabular-nums ${
+              className={`mr-auto text-[10px] tabular-nums ${
                 hasStaleData ? "text-warning" : "text-text-muted"
               }`}
               title={
@@ -518,7 +532,7 @@ export default function QuotaCardExpanded({
               e.stopPropagation();
               onRefresh();
             }}
-            className="ml-auto inline-flex size-7 shrink-0 min-h-7"
+            className="inline-flex size-7 shrink-0 min-h-7"
           >
             {loading ? <Spinner decorative size="xs" /> : <Icon name="refresh" size={12} />}
           </Button>

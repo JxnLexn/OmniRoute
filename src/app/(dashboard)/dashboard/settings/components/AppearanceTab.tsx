@@ -134,7 +134,8 @@ export default function AppearanceTab() {
         <div className="pt-4 border-t border-border">
           <RadioGroup
             aria-label={t("themeSelectionAria")}
-            orientation="horizontal"
+            columns={3}
+            minItemWidth="9rem"
             value={theme}
             onValueChange={(next) => setTheme(next)}
           >
@@ -307,7 +308,7 @@ export default function AppearanceTab() {
 
           <RadioGroup
             aria-label={getSettingsLabel("comboConfigMode", "Combo configuration mode")}
-            orientation="horizontal"
+            columns={2}
             value={comboConfigMode}
             onValueChange={(next) => updateSetting(COMBO_CONFIG_MODE_SETTING_KEY, next)}
             disabled={loading}
@@ -427,7 +428,7 @@ export default function AppearanceTab() {
               <Icon name="badge" size={20} />
             </span>
             <div>
-              <h4 className="font-semibold">{t("whitelabeling")}</h4>
+              <h4>{t("whitelabeling")}</h4>
               <p className="text-sm text-text-muted">{t("whitelabelingDesc")}</p>
             </div>
           </div>

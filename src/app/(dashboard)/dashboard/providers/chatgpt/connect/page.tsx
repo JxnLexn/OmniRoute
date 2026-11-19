@@ -2,21 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { PageHeader } from "@omniroute/ui-kit/page-header";
 
 export default function ChatGptConnectPage() {
+  const t = useTranslations("chatgptSignIn");
   const started = useRef(false);
-  const [message, setMessage] = useState("Completing ChatGPT sign-in…");
+  const [message, setMessage] = useState(t("completing"));
   useEffect(() => {
     if (started.current) return;
     started.current = true;
     const params = new URLSearchParams(window.location.hash.slice(1));
     window.history.replaceState(null, "", window.location.pathname);
     if (params.has("error") || !params.get("code") || !params.get("state")) {
-      queueMicrotask(() =>
-        setMessage(
-          "Sign-in was cancelled or the callback is incomplete. Start again in ChatGPT settings."
-        )
-      );
+      queueMicrotask(() => setMessage(t("incomplete")));
       return;
     }
     void fetch("/api/oauth/chatgpt/session", {
@@ -32,19 +31,18 @@ export default function ChatGptConnectPage() {
       .then(async (response) => {
         const result = await response.json();
         setMessage(
-          response.ok
-            ? result.warning || "ChatGPT is connected. You can return to the original tab."
-            : result.error?.message || "Sign-in failed. Start again from your dashboard."
+          response.ok ? result.warning || t("returnToTab") : result.error?.message || t("failed")
         );
       })
-      .catch(() => setMessage("Unable to reach OmniRoute. Start sign-in again."));
-  }, []);
+      .catch(() => setMessage(t("unreachable")));
+  }, [t]);
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-8">
-      <h1 className="text-2xl font-semibold">ChatGPT</h1>
+      {/* The provider name is the page title, as on the provider detail pages. */}
+      <PageHeader compact title="ChatGPT" />
       <p role="status">{message}</p>
       <Link href="/dashboard/providers/chatgpt" className="text-primary underline">
-        Back to ChatGPT
+        {t("back")}
       </Link>
     </main>
   );

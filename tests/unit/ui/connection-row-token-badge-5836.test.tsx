@@ -15,6 +15,11 @@ vi.mock("next-intl", () => ({
   useLocale: () => "en",
   useTranslations: () => (key: string) => key,
 }));
+// This row test exercises expiry/usage UI, not the global persisted privacy store.
+vi.mock("@/store/emailPrivacyStore", () => ({
+  default: (select: (state: { emailsVisible: boolean }) => unknown) =>
+    select({ emailsVisible: true }),
+}));
 
 import ConnectionRow, {
   type ConnectionRowConnection,

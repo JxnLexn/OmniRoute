@@ -4,21 +4,21 @@
  * so they may end up in the audit log but never decide a lockout key or a locality gate.
  */
 import { classifyIpScope, type IpScope } from "@/lib/ipUtils";
-import { AUTHZ_HEADER_TRUSTED_PEER_IP } from "@/server/authz/headers";
+import { AUTHZ_HEADER_TRUSTED_CLIENT_IP } from "@/server/authz/headers";
 import { classifyHostLocality } from "@/server/authz/routeGuard";
 import { getRequestPeerLocality } from "@/shared/utils/apiAuth";
 
-const UNKNOWN_PEER_KEY = "__unknown_peer__";
+const UNKNOWN_CLIENT_KEY = "__unknown_client__";
 
 /**
- * Key for the failed-attempt lockout: the stamped socket peer. When this process stamps
+ * Key for the failed-attempt lockout: the client IP stamped by the trusted proxy pipeline. When this process stamps
  * peers but the request carries none, every such request shares one key instead of
  * falling back to a forwarded address that can be rotated for a fresh attempt budget.
  * Without a stamping server (direct handler calls) the forwarded address is all there is.
  */
 export function getLoginLockoutKey(request: Request, forwardedIp: string | null): string | null {
   if (!process.env.OMNIROUTE_PEER_STAMP_TOKEN) return forwardedIp;
-  return request.headers.get(AUTHZ_HEADER_TRUSTED_PEER_IP) || UNKNOWN_PEER_KEY;
+  return request.headers.get(AUTHZ_HEADER_TRUSTED_CLIENT_IP) || UNKNOWN_CLIENT_KEY;
 }
 
 /** Origin tag for audit rows, from the stamped peer rather than a forwarded address. */
