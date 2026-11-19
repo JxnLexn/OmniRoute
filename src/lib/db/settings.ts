@@ -294,6 +294,7 @@ export async function getSettings() {
     // Uses isFreeModel() from src/shared/utils/freeModels.ts to detect free entries
     // (`:free` suffix, zero-price pricing, or FREE_MODEL_BUDGETS membership). Default
     // false preserves prior behaviour; opt-in only.
+    codexHideForcedReasoningModels: false,
     hidePaidModels: false,
     antigravityHideForcedReasoningModels: false,
     agyHideForcedReasoningModels: false,

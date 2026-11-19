@@ -1,3 +1,4 @@
+import { visibleCodexModels } from "@/shared/constants/codexVariantVisibility";
 import { nativeReasoningComboMetadata } from "./nativeReasoningCatalog";
 import {
   shouldHideForcedReasoningModel,
@@ -1012,7 +1013,9 @@ async function buildUnifiedModelsResponseCore(
         timestamp,
         (c) => buildComboCatalogMetadata(c, getVisibleComboTargets(c))
       );
-      const quotaFinal = await applyCatalogPostFilters(request, quotaModels, postFilterContext);
+      let quotaFinal = await applyCatalogPostFilters(request, quotaModels, postFilterContext);
+      if (settings.codexHideForcedReasoningModels === true)
+        quotaFinal = visibleCodexModels(quotaFinal);
       return finalizeCatalogResponse(request, quotaFinal, () => undefined, {
         ...corsHeaders,
         ...diagnosticHeaders,
@@ -2338,6 +2341,8 @@ async function buildUnifiedModelsResponseCore(
     }
     // ?configuredOnly — hide models that have no eligible DB connection.
     finalModels = await applyCatalogPostFilters(request, finalModels, postFilterContext);
+    if (settings.codexHideForcedReasoningModels === true)
+      finalModels = visibleCodexModels(finalModels);
     finalModels = finalModels.filter((row) => {
       if (row.owned_by === "combo") return true;
       const address = String(row.id || "");

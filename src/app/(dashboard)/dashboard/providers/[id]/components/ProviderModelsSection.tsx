@@ -1,5 +1,7 @@
 "use client";
 
+import { visibleCodexModels } from "@/shared/constants/codexVariantVisibility";
+import { useCodexVariantVisibility } from "../hooks/useCodexVariantVisibility";
 import Icon from "@/shared/components/Icon";
 
 /**
@@ -144,7 +146,7 @@ export default function ProviderModelsSection({
   isManagedAvailableModelsProvider,
   compatibleSupportsModelImport,
   allowModelImport,
-  models,
+  models: unfilteredModels,
   modelMeta,
   modelAliases,
   comboUsage,
@@ -197,6 +199,24 @@ export default function ProviderModelsSection({
   t,
 }: ProviderModelsSectionProps) {
   const forcedReasoningVisibility = useForcedReasoningVisibility(providerId);
+  const visibility = useCodexVariantVisibility(providerId);
+  const models = visibility.hidden ? visibleCodexModels(unfilteredModels, true) : unfilteredModels;
+  const codexFilter = providerId === "codex" && (
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={visibility.hidden}
+        disabled={visibility.disabled}
+        onChange={(event) => void visibility.save(event.target.checked)}
+      />
+      {providerText(t, "hideFixedCodexReasoning", "Hide models with fixed reasoning levels")}
+      {visibility.error && (
+        <span role="alert">
+          {providerText(t, "codexVisibilityError", "Could not load or save model visibility.")}
+        </span>
+      )}
+    </label>
+  );
   const [freeFilter, setFreeFilter] = useState<"all" | "free" | "paid">("all");
   const [sortFreeFirst, setSortFreeFirst] = useState(false);
   // Catalog rows only: the compatible/passthrough branches mount their own copy of
@@ -323,6 +343,7 @@ export default function ProviderModelsSection({
         <ActionBar align="start" className="mb-4">
           {modelDiscoveryControls}
           {clearAllButton}
+          {codexFilter}
           {forcedReasoningControls}
         </ActionBar>
         <CompatibleModelsSection
@@ -405,6 +426,7 @@ export default function ProviderModelsSection({
           )}
           {modelDiscoveryControls}
           {clearAllButton}
+          {codexFilter}
           {forcedReasoningControls}
           {allowModelImport && !canImportModels && (
             <span className="text-xs text-text-muted">{t("addConnectionToImport")}</span>
@@ -454,7 +476,7 @@ export default function ProviderModelsSection({
   }
 
   const importButton =
-    allowModelImport || clearAllButton || forcedReasoningVisibility.supported ? (
+    allowModelImport || clearAllButton || codexFilter || forcedReasoningVisibility.supported ? (
       <ActionBar align="start" className="mb-4">
         {allowModelImport && (
           <Button
@@ -469,6 +491,7 @@ export default function ProviderModelsSection({
         )}
         {allowModelImport && modelDiscoveryControls}
         {clearAllButton}
+        {codexFilter}
         {forcedReasoningControls}
         {allowModelImport && !canImportModels && (
           <span className="text-xs text-text-muted">{t("addConnectionToImport")}</span>
