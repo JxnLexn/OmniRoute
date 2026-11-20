@@ -150,13 +150,11 @@ function warn(message: string, err: unknown): void {
   log.warn(message, { error: sanitizeErrorMessage((err as Error)?.message ?? String(err)) });
 }
 
-function isUsableAccount(connection: WakeupConnection | null, provider: WakeupProvider): boolean {
-  return Boolean(
-    connection &&
-    connection.provider === provider &&
-    connection.authType === "oauth" &&
-    connection.isActive !== false
-  );
+function isSupportedWakeupAccount(
+  connection: WakeupConnection | null,
+  provider: WakeupProvider
+): boolean {
+  return Boolean(connection && connection.provider === provider && connection.authType === "oauth");
 }
 
 function rejectConnection(
@@ -391,15 +389,16 @@ export async function waitForCodexWakeupRuns(state: CodexWakeupState = sharedSta
   }
 }
 
-/** Ids from `connectionIds` that are not active Codex OAuth connections. */
-export async function findUnusableWakeupAccounts(
+/** Ids from `connectionIds` that are not supported OAuth connections. */
+export async function findUnsupportedWakeupAccounts(
   connectionIds: string[],
   deps: Pick<CodexWakeupDeps, "getProviderConnectionById"> = createDefaultCodexWakeupDeps(),
   provider: WakeupProvider = "codex"
 ): Promise<string[]> {
   const unusable: string[] = [];
   for (const id of connectionIds) {
-    if (!isUsableAccount(await deps.getProviderConnectionById(id), provider)) unusable.push(id);
+    if (!isSupportedWakeupAccount(await deps.getProviderConnectionById(id), provider))
+      unusable.push(id);
   }
   return unusable;
 }
