@@ -11,7 +11,7 @@ import {
   updateCodexWakeupTask,
 } from "@/lib/db/codexWakeups";
 import { nextWakeupAt } from "@/lib/services/codexWakeupSchedule";
-import { findUnusableWakeupAccounts, runCodexWakeupTaskNow } from "@/lib/services/codexWakeups";
+import { findUnsupportedWakeupAccounts, runCodexWakeupTaskNow } from "@/lib/services/codexWakeups";
 import {
   codexWakeupActionSchema,
   type CodexWakeupTaskInput,
@@ -67,16 +67,21 @@ export async function GET(request: Request) {
 async function saveTask(task: CodexWakeupTaskInput, id: string | null, provider: WakeupProvider) {
   // Disabling a task never needs its accounts to still be usable.
   if (task.enabled || !id) {
-    const unusable = await findUnusableWakeupAccounts(task.connectionIds, undefined, provider);
+    const unusable = await findUnsupportedWakeupAccounts(task.connectionIds, undefined, provider);
     if (unusable.length > 0)
       return invalid(
-        provider === "claude"
-          ? "Choose active Claude OAuth accounts"
-          : "Choose active Codex OAuth accounts"
+        provider === "claude" ? "Choose Claude OAuth accounts" : "Choose Codex OAuth accounts"
       );
   }
   const nowMs = Date.now();
-  const nextRunAt = task.enabled ? nextWakeupAt(task.schedule, nowMs) : null;
+  const previous = id ? getCodexWakeupTask(id) : null;
+  const sameSchedule =
+    previous?.enabled && JSON.stringify(previous.schedule) === JSON.stringify(task.schedule);
+  const nextRunAt = task.enabled
+    ? sameSchedule
+      ? previous.nextRunAt
+      : nextWakeupAt(task.schedule, nowMs)
+    : null;
   const saved = id
     ? updateCodexWakeupTask(id, task, nextRunAt, nowMs)
     : createCodexWakeupTask(task, nextRunAt, nowMs, provider);

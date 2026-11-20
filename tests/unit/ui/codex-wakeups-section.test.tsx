@@ -24,7 +24,7 @@ async function render(provider: "codex" | "claude" = "codex") {
     root.render(
       <CodexWakeupsSection
         provider={provider}
-        accounts={[{ id: "codex-1", label: "work@example.com" }]}
+        accounts={[{ id: "codex-1", label: "work@example.com", inactive: true }]}
       />
     );
   });
@@ -122,4 +122,38 @@ it("sends scheduled Claude wakeup actions to the Claude account scope", async ()
     fetchMock.mock.calls.every(([url]) => url === "/api/settings/codex-wakeups?provider=claude")
   ).toBe(true);
   expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true);
+});
+
+it("shows the accounts and edits the existing wakeup with prefilled values", async () => {
+  const fetchMock = mockApi(200);
+  await render();
+  expect(document.body.textContent).toContain("Accounts · work@example.com (Inactive)");
+  await act(async () => {
+    button("Edit")?.click();
+  });
+  const name = [...document.querySelectorAll("input")].find((input) => input.value === TASK.name)!;
+  expect(name).toBeTruthy();
+  expect(document.querySelector('input[type="number"]')).toHaveProperty("value", "90");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+      name,
+      "Afternoon"
+    );
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    button("Save")?.click();
+  });
+  const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+  expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+    action: "update",
+    id: TASK.id,
+    task: {
+      name: "Afternoon",
+      connectionIds: TASK.connectionIds,
+      schedule: TASK.schedule,
+      enabled: TASK.enabled,
+    },
+  });
+  expect(button("Cancel")).toBeUndefined();
 });

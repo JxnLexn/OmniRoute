@@ -11,6 +11,7 @@ type CodexConnection = {
   id: string;
   provider: string;
   authType?: string;
+  isActive?: boolean;
   name?: string | null;
   email?: string | null;
   displayName?: string | null;
@@ -178,7 +179,11 @@ export default function CodexAutoPingTab({ provider = "codex" }: { provider?: Wa
           />
           <CodexWakeupsSection
             provider={provider}
-            accounts={connections.map((conn) => ({ id: conn.id, label: connectionLabel(conn) }))}
+            accounts={connections.map((conn) => ({
+              id: conn.id,
+              label: connectionLabel(conn),
+              inactive: conn.isActive === false,
+            }))}
           />
         </>
       )}
