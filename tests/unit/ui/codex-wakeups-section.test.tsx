@@ -16,12 +16,17 @@ const TASK = {
 
 const roots: Array<{ root: ReturnType<typeof createRoot>; el: HTMLDivElement }> = [];
 
-async function render() {
+async function render(provider: "codex" | "claude" = "codex") {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const root = createRoot(el);
   await act(async () => {
-    root.render(<CodexWakeupsSection accounts={[{ id: "codex-1", label: "work@example.com" }]} />);
+    root.render(
+      <CodexWakeupsSection
+        provider={provider}
+        accounts={[{ id: "codex-1", label: "work@example.com" }]}
+      />
+    );
   });
   roots.push({ root, el });
 }
@@ -104,4 +109,17 @@ describe("Codex scheduled wakeups section", () => {
       "The action failed. Try again in a moment."
     );
   });
+});
+
+it("sends scheduled Claude wakeup actions to the Claude account scope", async () => {
+  const fetchMock = mockApi();
+  await render("claude");
+  expect(document.querySelector("#claude-wakeups-title")).toBeTruthy();
+  await act(async () => {
+    button("Run now")?.click();
+  });
+  expect(
+    fetchMock.mock.calls.every(([url]) => url === "/api/settings/codex-wakeups?provider=claude")
+  ).toBe(true);
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true);
 });
