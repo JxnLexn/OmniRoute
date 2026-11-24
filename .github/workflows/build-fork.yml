@@ -67,9 +67,6 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=3.8.54-leonapi
-            type=raw,value=3.8.50-admission-vertex-hotfix
-            type=raw,value=main
             type=sha,prefix=sha-
           labels: |
             org.opencontainers.image.title=OmniRoute v3.8.54 LeonAPI
